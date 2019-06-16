@@ -53,5 +53,4 @@ Patohom resolver `souenzzo.graph-demo.core/friends` (bad name)
 will get `"foo"`, turn into `:user.id/foo`, get the entity from crux, usually something like
 `{:crux.db/id "foo" :user/friends [:user.id/var]}` and return `{:user/friends [{:user/id "bar"}]}`
 
-Recursively will do it, foloing the query.
-
+Pathom will flow the query recursively.
