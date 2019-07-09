@@ -1,13 +1,14 @@
 (ns souenzzo.graph-demo.client
-  (:require [goog.dom :as gdom]
+  (:require #?@(:cljs [[goog.dom :as gdom]
+                       [goog.events :as gevt]
+                       [goog.events.EventType :as event-type]
+                       [com.fulcrologic.fulcro.networking.http-remote :as fhr]
+                       [com.fulcrologic.fulcro.dom :as dom]]
+                :clj  [[com.fulcrologic.fulcro.dom-server :as dom]])
             [com.fulcrologic.fulcro.components :as fc]
-            [com.fulcrologic.fulcro.dom :as dom]
-            [goog.events :as gevt]
-            [goog.events.EventType :as event-type]
-            [com.fulcrologic.fulcro.routing.union-router :as fr]
+            [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr]
             [com.fulcrologic.fulcro.application :as fa]
             [com.fulcrologic.fulcro.data-fetch :as df]
-            [com.fulcrologic.fulcro.networking.http-remote :as fhr]
             [com.fulcrologic.fulcro.mutations :as fm]))
 
 
@@ -50,28 +51,28 @@
       {:style {:borderWidth "3px"
                :borderStyle "solid"
                :borderColor "black"}}
-      (mapv ui-friend friends))))
+      (map ui-friend friends))))
 
 
 (fm/defmutation user/focus
   [{:user/keys [id]}]
   (action [{:keys [state]}]
-    (swap! state (fn [st]
-                   (cond-> (assoc-in st [:PAGE/users :PAGE/users :ui/current-id] id)
-                           (contains? (:user/id st) id) (assoc-in [:PAGE/users :PAGE/users :ui/current] [:user/id id])))))
+          (swap! state (fn [st]
+                         (cond-> (assoc-in st [:PAGE/users :PAGE/users :ui/current-id] id)
+                                 (contains? (:user/id st) id) (assoc-in [:PAGE/users :PAGE/users :ui/current] [:user/id id])))))
   (remote [env]
-    (-> env
-        (fm/returning User)
-        (fm/with-target [:PAGE/users :PAGE/users :ui/current]))))
+          (-> env
+              (fm/returning User)
+              (fm/with-target [:PAGE/users :PAGE/users :ui/current]))))
 
 
 (fm/defmutation user/set-color
   [{:user/keys [id color]}]
   (action [{:keys [state]}]
-    (swap! state (fn [st]
-                   (assoc-in st [:user/id id :user/color] color))))
+          (swap! state (fn [st]
+                         (assoc-in st [:user/id id :user/color] color))))
   (remote [_]
-    true))
+          true))
 
 (def ui-user (fc/factory User {:keyfn :user/id}))
 
@@ -108,12 +109,12 @@
 (fm/defmutation user/add-friend
   [_]
   (action [{:keys [state]}]
-    (swap! state (fn [st]
-                   (-> st))))
+          (swap! state (fn [st]
+                         (-> st))))
   (remote [env]
-    (-> env
-        (fm/returning User)
-        (fm/with-target [:PAGE/users :PAGE/users :ui/current]))))
+          (-> env
+              (fm/returning User)
+              (fm/with-target [:PAGE/users :PAGE/users :ui/current]))))
 
 
 
@@ -136,13 +137,13 @@
 
 (defn main
   [e]
-  (let [target (gdom/getElement "app")
-        app (fa/fulcro-app {:remotes {:remote (fhr/fulcro-http-remote {})}})]
-    (fa/mount! app Root target)
-    (reset! state app)))
+  #?(:cljs (let [target (gdom/getElement "app")
+                 app (fa/fulcro-app {:remotes {:remote (fhr/fulcro-http-remote {})}})]
+             (fa/mount! app Root target)
+             (reset! state app))))
 
 (defn after-load
   []
   (fa/force-root-render! @state))
 
-(gevt/listen js/window event-type/LOAD main)
+#?(:cljs (gevt/listen js/window event-type/LOAD main))

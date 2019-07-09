@@ -6,9 +6,11 @@
             [cognitect.transit :as transit]
             [com.wsscode.pathom.core :as p]
             [clojure.core.async :as async]
-            [com.wsscode.pathom.connect :as pc])
-  (:import (crux.api ICruxAPI)
-           (java.util UUID)))
+            [com.wsscode.pathom.connect :as pc]
+            [clojure.string :as string]
+            [com.fulcrologic.fulcro.dom-server :as dom]
+            [com.fulcrologic.fulcro.components :as fc])
+  (:import (crux.api ICruxAPI)))
 
 
 (defonce ^ICruxAPI system
@@ -16,22 +18,28 @@
                                         :event-log-dir "log/db-dir-1"
                                         :db-dir        "data/db-dir-1"}))
 
+(fc/defsc Index [this props]
+  {:query         []
+   :initial-state {}}
+  (dom/html
+    (dom/head
+      (dom/meta {:charset "utf-8"}))
+    (dom/body
+      (dom/div
+        {:id "app"})
+      (dom/script {:src "/js/main/main.js"}))))
+
+(def ui-index (fc/factory Index))
+
 (defn index-enter
   [{:as ctx}]
-  (assoc ctx :response {:body    "<!DOCTYPE html>
-<html>
-<head>
-<meta charset='utf-8'>
-</head>
-<body>
-<div id='app'></div>
-<script src='/js/main/main.js'></script>
-</body>
-</html>
-  "
-                        :headers {"Content-Security-Policy" ""
-                                  "Content-Type"            (mime/default-mime-types "html")}
-                        :status  200}))
+  (let [initial-state (fc/get-initial-state Index {})]
+    (assoc ctx :response {:body    (string/join "\n"
+                                                ["<!DOCTYPE html>"
+                                                 (dom/render-to-str (ui-index initial-state))])
+                          :headers {"Content-Security-Policy" ""
+                                    "Content-Type"            (mime/default-mime-types "html")}
+                          :status  200})))
 
 (def index
   {:name  ::index
