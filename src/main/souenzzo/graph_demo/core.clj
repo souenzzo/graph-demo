@@ -11,8 +11,10 @@
             [clojure.string :as string]
             [com.fulcrologic.fulcro.dom-server :as dom]
             [com.fulcrologic.fulcro.components :as fc])
-  (:import (crux.api ICruxAPI)))
+  (:import (crux.api ICruxAPI)
+           (java.time Duration)))
 
+(def timeout (Duration/ofSeconds 1))
 (defonce ^ICruxAPI system
          (crux/start-standalone-system {:kv-backend    "crux.kv.memdb.MemKv"
                                         :event-log-dir "log/db-dir-1"
@@ -61,8 +63,9 @@
         new-friends (into #{new-friend-id} friends)
         tx [[:crux.tx/put
              {:crux.db/id   user-id
-              :user/friends (vec new-friends)}]]]
-    (crux/submit-tx system tx)
+              :user/friends (vec new-friends)}]]
+        {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
+    (crux/sync system tx-time timeout)
     {:user/id id}))
 
 (pc/defmutation set-color
@@ -74,8 +77,9 @@
   (let [db (crux/db system)
         e (crux/entity db (keyword "user.id" (str id)))
         tx [[:crux.tx/put
-             (assoc e :user/color color)]]]
-    (crux/submit-tx system tx))
+             (assoc e :user/color color)]]
+        {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
+    (crux/sync system tx-time timeout))
   {:user/id id})
 
 (pc/defmutation focus
