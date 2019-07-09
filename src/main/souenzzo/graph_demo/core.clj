@@ -5,13 +5,13 @@
             [ring.util.mime-type :as mime]
             [cognitect.transit :as transit]
             [com.wsscode.pathom.core :as p]
+            [souenzzo.graph-demo.client :as client]
             [clojure.core.async :as async]
             [com.wsscode.pathom.connect :as pc]
             [clojure.string :as string]
             [com.fulcrologic.fulcro.dom-server :as dom]
             [com.fulcrologic.fulcro.components :as fc])
   (:import (crux.api ICruxAPI)))
-
 
 (defonce ^ICruxAPI system
          (crux/start-standalone-system {:kv-backend    "crux.kv.memdb.MemKv"
@@ -21,31 +21,20 @@
 (fc/defsc Index [this props]
   {:query         []
    :initial-state {}}
-  (dom/html
-    (dom/head
-      (dom/meta {:charset "utf-8"}))
-    (dom/body
-      (dom/div
-        {:id "app"})
-      (dom/script {:src "/js/main/main.js"}))))
+  (let [target-id "app"
+        main-fn `client/main
+        onload (str (munge (namespace main-fn)) "."
+                    (munge (name main-fn)) "(" (pr-str "app") ")")]
+    (dom/html
+      (dom/head
+        (dom/meta {:charset "utf-8"}))
+      (dom/body
+        {:onload onload}
+        (dom/div
+          {:id target-id})
+        (dom/script {:src "/js/main/main.js"})))))
 
 (def ui-index (fc/factory Index))
-
-(defn index-enter
-  [{:as ctx}]
-  (let [initial-state (fc/get-initial-state Index {})]
-    (assoc ctx :response {:body    (string/join "\n"
-                                                ["<!DOCTYPE html>"
-                                                 (dom/render-to-str (ui-index initial-state))])
-                          :headers {"Content-Security-Policy" ""
-                                    "Content-Type"            (mime/default-mime-types "html")}
-                          :status  200})))
-
-(def index
-  {:name  ::index
-   :enter index-enter})
-
-
 
 (pc/defresolver friends
   [app {:user/keys [id]}]
@@ -129,6 +118,20 @@
 (def api
   {:name  ::api
    :enter api-enter})
+
+(defn index-enter
+  [{:as ctx}]
+  (let [initial-state (fc/get-initial-state Index {})]
+    (assoc ctx :response {:body    (string/join "\n"
+                                                ["<!DOCTYPE html>"
+                                                 (dom/render-to-str (ui-index initial-state))])
+                          :headers {"Content-Security-Policy" ""
+                                    "Content-Type"            (mime/default-mime-types "html")}
+                          :status  200})))
+
+(def index
+  {:name  ::index
+   :enter index-enter})
 
 (def routes
   `#{["/" :get index]

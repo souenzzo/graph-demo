@@ -1,7 +1,5 @@
 (ns souenzzo.graph-demo.client
   (:require #?@(:cljs [[goog.dom :as gdom]
-                       [goog.events :as gevt]
-                       [goog.events.EventType :as event-type]
                        [com.fulcrologic.fulcro.networking.http-remote :as fhr]
                        [com.fulcrologic.fulcro.dom :as dom]]
                 :clj  [[com.fulcrologic.fulcro.dom-server :as dom]])
@@ -127,17 +125,17 @@
 
 (def ui-root-router (fc/factory RootRouter))
 
-(fc/defsc Root [this {:ui/keys [root-router]}]
-  {:query         [{:ui/root-router (fc/get-query RootRouter)}]
+(fc/defsc Root [this {:>/keys [root-router]}]
+  {:query         [{:>/root-router (fc/get-query RootRouter)}]
    :initial-state (fn [_]
-                    {:ui/root-router (fc/get-initial-state RootRouter _)})}
+                    {:>/root-router (fc/get-initial-state RootRouter _)})}
   (ui-root-router root-router))
 
 (defonce state (atom nil))
 
-(defn main
-  [e]
-  #?(:cljs (let [target (gdom/getElement "app")
+(defn ^:export main
+  [target-id]
+  #?(:cljs (let [target (gdom/getElement target-id)
                  app (fa/fulcro-app {:remotes {:remote (fhr/fulcro-http-remote {})}})]
              (fa/mount! app Root target)
              (reset! state app))))
@@ -145,5 +143,3 @@
 (defn after-load
   []
   (fa/force-root-render! @state))
-
-#?(:cljs (gevt/listen js/window event-type/LOAD main))
