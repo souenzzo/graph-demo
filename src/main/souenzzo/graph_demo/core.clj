@@ -10,7 +10,8 @@
             [com.wsscode.pathom.connect :as pc]
             [clojure.string :as string]
             [com.fulcrologic.fulcro.dom-server :as dom]
-            [com.fulcrologic.fulcro.components :as fc])
+            [com.fulcrologic.fulcro.components :as fc]
+            [taoensso.timbre :as log])
   (:import (crux.api ICruxAPI)
            (java.time Duration)))
 
@@ -38,6 +39,16 @@
         (dom/script {:src "/js/main/main.js"})))))
 
 (def ui-index (fc/factory Index))
+(pc/defresolver index-explorer [env _]
+  {::pc/input  #{:com.wsscode.pathom.viz.index-explorer/id}
+   ::pc/output [:com.wsscode.pathom.viz.index-explorer/index]}
+  {:com.wsscode.pathom.viz.index-explorer/index
+   (p/transduce-maps
+     (remove (fn [[k v]]
+               (contains? #{::pc/resolve
+                            ::pc/mutate}
+                          k)))
+     (get env ::pc/indexes))})
 
 (pc/defresolver friends
   [app {:user/keys [id]}]
@@ -95,7 +106,7 @@
 
 
 (def my-app-registry
-  [friends add-friend focus set-color])
+  [friends add-friend focus set-color index-explorer])
 
 (def parser
   (p/parallel-parser
@@ -119,8 +130,11 @@
         result (async/<!! (parser request params))]
     (assoc ctx
       :response {:body   (fn [w]
-                           (let [writer (transit/writer w :json)]
-                             (transit/write writer result)))
+                           (try
+                             (let [writer (transit/writer w :json)]
+                               (transit/write writer result))
+                             (catch Throwable e
+                               (log/error e))))
                  :status 200})))
 
 (def api

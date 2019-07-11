@@ -6,6 +6,7 @@
            org.clojure/core.async       {:mvn/version "0.4.500"}
            com.cognitect/transit-clj    {:mvn/version "0.8.313"}
            com.wsscode/pathom           {:mvn/version "2.2.17"}
+           com.taoensso/timbre          {:mvn/version "4.10.0"}
            com.fulcrologic/fulcro       {:git/url "git@github.com:fulcrologic/fulcro3.git"
                                          :sha     "37d5842e34d58a2b1a8d40ff6c2a2a23517c1f1f"}
            clj-time/clj-time            {:mvn/version "0.15.1"}

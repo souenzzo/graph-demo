@@ -135,9 +135,17 @@
 
 (defonce state (atom nil))
 
+(defn trace-remote
+  ([] (trace-remote identity))
+  ([handler]
+   (fn [request]
+     (handler (update request :body conj :com.wsscode.pathom/trace)))))
+
 (defn ^:export main
   [target-id]
-  (let [app (fa/fulcro-app #?(:cljs {:remotes {:remote (fhr/fulcro-http-remote {})}}))]
+  (let [app (fa/fulcro-app #?(:cljs {:remotes {:remote (-> {:request-middleware (-> (fhr/wrap-fulcro-request)
+                                                                                    (trace-remote))}
+                                                           (fhr/fulcro-http-remote))}}))]
     #?(:cljs (fa/mount! app Root (gdom/getElement target-id)))
     (reset! state app)))
 
