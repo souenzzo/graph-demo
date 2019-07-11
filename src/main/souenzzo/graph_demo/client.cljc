@@ -131,14 +131,15 @@
                     {:>/root-router (fc/get-initial-state RootRouter _)})}
   (ui-root-router root-router))
 
+(def ui-root (fc/factory Root))
+
 (defonce state (atom nil))
 
 (defn ^:export main
   [target-id]
-  #?(:cljs (let [target (gdom/getElement target-id)
-                 app (fa/fulcro-app {:remotes {:remote (fhr/fulcro-http-remote {})}})]
-             (fa/mount! app Root target)
-             (reset! state app))))
+  (let [app (fa/fulcro-app #?(:cljs {:remotes {:remote (fhr/fulcro-http-remote {})}}))]
+    #?(:cljs (fa/mount! app Root (gdom/getElement target-id)))
+    (reset! state app)))
 
 (defn after-load
   []

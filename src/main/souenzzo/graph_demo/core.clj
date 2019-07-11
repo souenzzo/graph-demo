@@ -33,7 +33,8 @@
       (dom/body
         {:onload onload}
         (dom/div
-          {:id target-id})
+          {:id target-id}
+          (client/ui-root (fc/get-initial-state client/Root)))
         (dom/script {:src "/js/main/main.js"})))))
 
 (def ui-index (fc/factory Index))
@@ -43,12 +44,13 @@
   {::pc/input  #{:user/id}
    ::pc/output [:user/color
                 {:user/friends [:user/id]}]}
-  (let [db (crux/db system)
-        user-id (keyword "user.id" (str id))
-        {:keys [user/friends user/color]} (crux/entity db user-id)]
-    {:user/color   (or color "#ffffff")
-     :user/friends (for [friend friends]
-                     {:user/id (name friend)})}))
+  (async/thread
+    (let [db (crux/db system)
+          user-id (keyword "user.id" (str id))
+          {:keys [user/friends user/color]} (crux/entity db user-id)]
+      {:user/color   (or color "#ffffff")
+       :user/friends (for [friend friends]
+                       {:user/id (name friend)})})))
 
 (pc/defmutation add-friend
   [app {:user/keys [id new-friend]}]
@@ -56,17 +58,18 @@
    ::pc/output [:user/id]
    ::pc/params [:user/id
                 :user/new-friend]}
-  (let [db (crux/db system)
-        user-id (keyword "user.id" (str id))
-        new-friend-id (keyword "user.id" (str new-friend))
-        {:keys [user/friends]} (crux/entity db (keyword "user.id" (str id)))
-        new-friends (into #{new-friend-id} friends)
-        tx [[:crux.tx/put
-             {:crux.db/id   user-id
-              :user/friends (vec new-friends)}]]
-        {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
-    (crux/sync system tx-time timeout)
-    {:user/id id}))
+  (async/thread
+    (let [db (crux/db system)
+          user-id (keyword "user.id" (str id))
+          new-friend-id (keyword "user.id" (str new-friend))
+          {:keys [user/friends]} (crux/entity db (keyword "user.id" (str id)))
+          new-friends (into #{new-friend-id} friends)
+          tx [[:crux.tx/put
+               {:crux.db/id   user-id
+                :user/friends (vec new-friends)}]]
+          {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
+      (crux/sync system tx-time timeout)
+      {:user/id id})))
 
 (pc/defmutation set-color
   [app {:user/keys [id color]}]
@@ -74,13 +77,14 @@
    ::pc/output [:user/id]
    ::pc/params [:user/id
                 :user/color]}
-  (let [db (crux/db system)
-        e (crux/entity db (keyword "user.id" (str id)))
-        tx [[:crux.tx/put
-             (assoc e :user/color color)]]
-        {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
-    (crux/sync system tx-time timeout))
-  {:user/id id})
+  (async/thread
+    (let [db (crux/db system)
+          e (crux/entity db (keyword "user.id" (str id)))
+          tx [[:crux.tx/put
+               (assoc e :user/color color)]]
+          {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
+      (crux/sync system tx-time timeout)
+      {:user/id id})))
 
 (pc/defmutation focus
   [ctx args]
