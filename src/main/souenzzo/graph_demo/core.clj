@@ -11,15 +11,12 @@
             [clojure.string :as string]
             [com.fulcrologic.fulcro.dom-server :as dom]
             [com.fulcrologic.fulcro.components :as fc]
-            [taoensso.timbre :as log])
+            [taoensso.timbre :as log]
+            [io.pedestal.interceptor :as interceptor])
   (:import (crux.api ICruxAPI)
            (java.time Duration)))
 
-(def timeout (Duration/ofSeconds 1))
-(defonce ^ICruxAPI system
-         (crux/start-standalone-system {:kv-backend    "crux.kv.memdb.MemKv"
-                                        :event-log-dir "log/db-dir-1"
-                                        :db-dir        "data/db-dir-1"}))
+(set! *warn-on-reflection* true)
 
 (fc/defsc Index [this {:>/keys [root]}]
   {:query         [{:>/root (fc/get-query client/Root)}]
@@ -28,7 +25,7 @@
   (let [target-id "app"
         main-fn `client/main
         onload (str (munge (namespace main-fn)) "."
-                    (munge (name main-fn)) "(" (pr-str "app") ")")]
+                    (munge (name main-fn)) "(" (pr-str target-id) ")")]
     (dom/html
       (dom/head
         (dom/meta {:charset "utf-8"}))
@@ -53,7 +50,7 @@
      (get env ::pc/indexes))})
 
 (pc/defresolver friends
-  [app {:user/keys [id]}]
+  [{::keys [system timeout]} {:user/keys [id]}]
   {::pc/input  #{:user/id}
    ::pc/output [:user/color
                 {:user/friends [:user/id]}]}
@@ -66,7 +63,7 @@
                        {:user/id (name friend)})})))
 
 (pc/defmutation add-friend
-  [app {:user/keys [id new-friend]}]
+  [{::keys [system timeout]} {:user/keys [id new-friend]}]
   {::pc/sym    `user/add-friend
    ::pc/output [:user/id]
    ::pc/params [:user/id
@@ -85,7 +82,7 @@
       {:user/id id})))
 
 (pc/defmutation set-color
-  [app {:user/keys [id color]}]
+  [{::keys [system timeout]} {:user/keys [id color]}]
   {::pc/sym    `user/set-color
    ::pc/output [:user/id]
    ::pc/params [:user/id
@@ -111,9 +108,8 @@
                                             p/env-placeholder-reader]
                   ::p/placeholder-prefixes #{">"}}
      ::p/mutate  pc/mutate-async
-     ::p/plugins [(pc/connect-plugin {::pc/register my-app-registry}) ; setup connect and use our resolvers
+     ::p/plugins [(pc/connect-plugin {::pc/register my-app-registry})
                   p/error-handler-plugin
-                  p/request-cache-plugin
                   p/trace-plugin]}))
 
 (defn api
@@ -121,9 +117,9 @@
     :as   request}]
   (let [params (transit/read (transit/reader body :json))
         result (async/<!! (parser request params))]
-    {:body   (fn [outut]
+    {:body   (fn [output]
                (try
-                 (let [writer (transit/writer outut :json)]
+                 (let [writer (transit/writer output :json)]
                    (transit/write writer result))
                  (catch Throwable e
                    (log/error e))))
@@ -143,12 +139,33 @@
   `#{["/" :get index]
      ["/api" :post api]})
 
+(def timeout (Duration/ofSeconds 1))
+(defonce ^ICruxAPI system
+         (crux/start-standalone-system {:kv-backend    "crux.kv.memdb.MemKv"
+                                        :event-log-dir "log/db-dir-1"
+                                        :db-dir        "data/db-dir-1"}))
+
 (def service
   {:env              :prod
+   ::timeout         timeout
+   ::system          system
    ::http/port       8080
    ::http/routes     routes
    ::http/mime-types mime/default-mime-types
    ::http/type       :jetty})
+
+(defn add-service-map
+  [{::http/keys [interceptors]
+    :as         service-map}]
+  (let [+service-map {:name  ::add-service-map
+                      :enter (fn [ctx]
+                               (update ctx :request (partial merge service-map)))}]
+    (assoc service-map
+      ::http/interceptors (into (empty interceptors)
+                                (comp cat
+                                      (map interceptor/interceptor))
+                                [[+service-map]
+                                 interceptors]))))
 
 (defn default-interceptors
   [{:keys [env]
@@ -159,4 +176,5 @@
                                          #(route/expand-routes r)))
             dev? (assoc ::http/join? false)
             :always http/default-interceptors
-            dev? http/dev-interceptors)))
+            dev? http/dev-interceptors
+            :always add-service-map)))
