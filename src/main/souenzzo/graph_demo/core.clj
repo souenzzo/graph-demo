@@ -21,9 +21,10 @@
                                         :event-log-dir "log/db-dir-1"
                                         :db-dir        "data/db-dir-1"}))
 
-(fc/defsc Index [this props]
-  {:query         []
-   :initial-state {}}
+(fc/defsc Index [this {:>/keys [root]}]
+  {:query         [{:>/root (fc/get-query client/Root)}]
+   :initial-state (fn [_]
+                    {:>/root (fc/get-initial-state client/Root _)})}
   (let [target-id "app"
         main-fn `client/main
         onload (str (munge (namespace main-fn)) "."
@@ -35,10 +36,11 @@
         {:onload onload}
         (dom/div
           {:id target-id}
-          (client/ui-root (fc/get-initial-state client/Root)))
+          (client/ui-root root))
         (dom/script {:src "/js/main/main.js"})))))
 
 (def ui-index (fc/factory Index))
+
 (pc/defresolver index-explorer [env _]
   {::pc/input  #{:com.wsscode.pathom.viz.index-explorer/id}
    ::pc/output [:com.wsscode.pathom.viz.index-explorer/index]}
@@ -97,16 +99,8 @@
       (crux/sync system tx-time timeout)
       {:user/id id})))
 
-(pc/defmutation focus
-  [ctx args]
-  {::pc/sym    `user/focus
-   ::pc/params [:user/id]
-   ::pc/output [:user/id]}
-  args)
-
-
 (def my-app-registry
-  [friends add-friend focus set-color index-explorer])
+  [friends add-friend set-color index-explorer])
 
 (def parser
   (p/parallel-parser
@@ -122,38 +116,28 @@
                   p/request-cache-plugin
                   p/trace-plugin]}))
 
-(defn api-enter
-  [{{:keys [body]} :request
-    :keys          [request]
-    :as            ctx}]
+(defn api
+  [{:keys [body]
+    :as   request}]
   (let [params (transit/read (transit/reader body :json))
         result (async/<!! (parser request params))]
-    (assoc ctx
-      :response {:body   (fn [w]
-                           (try
-                             (let [writer (transit/writer w :json)]
-                               (transit/write writer result))
-                             (catch Throwable e
-                               (log/error e))))
-                 :status 200})))
+    {:body   (fn [outut]
+               (try
+                 (let [writer (transit/writer outut :json)]
+                   (transit/write writer result))
+                 (catch Throwable e
+                   (log/error e))))
+     :status 200}))
 
-(def api
-  {:name  ::api
-   :enter api-enter})
-
-(defn index-enter
-  [{:as ctx}]
+(defn index
+  [_]
   (let [initial-state (fc/get-initial-state Index {})]
-    (assoc ctx :response {:body    (string/join "\n"
-                                                ["<!DOCTYPE html>"
-                                                 (dom/render-to-str (ui-index initial-state))])
-                          :headers {"Content-Security-Policy" ""
-                                    "Content-Type"            (mime/default-mime-types "html")}
-                          :status  200})))
-
-(def index
-  {:name  ::index
-   :enter index-enter})
+    {:body    (string/join "\n"
+                           ["<!DOCTYPE html>"
+                            (dom/render-to-str (ui-index initial-state))])
+     :headers {"Content-Security-Policy" ""
+               "Content-Type"            (mime/default-mime-types "html")}
+     :status  200}))
 
 (def routes
   `#{["/" :get index]

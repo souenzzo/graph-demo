@@ -4,12 +4,15 @@
            io.pedestal/pedestal.service {:mvn/version "0.5.7"}
            io.pedestal/pedestal.jetty   {:mvn/version "0.5.7"}
            org.clojure/core.async       {:mvn/version "0.4.500"}
+           edn-query-language/eql       {:mvn/version "0.0.5"}
            com.cognitect/transit-clj    {:mvn/version "0.8.313"}
            com.wsscode/pathom           {:mvn/version "2.2.17"}
            com.taoensso/timbre          {:mvn/version "4.10.0"}
            com.fulcrologic/fulcro       {:git/url "git@github.com:fulcrologic/fulcro3.git"
-                                         :sha     "37d5842e34d58a2b1a8d40ff6c2a2a23517c1f1f"}
+                                         :sha     "2bc6c4b70a0d6e5891fe958149329fd5a05b9fd8"}
            clj-time/clj-time            {:mvn/version "0.15.1"}
            gnl/ghostwheel.stubs         {:mvn/version "0.4.1"}}
- :aliases {:dev {:extra-paths ["src/dev"]
-                 :extra-deps  {thheller/shadow-cljs {:mvn/version "2.8.40"}}}}}
+ :aliases {:dev {:extra-paths ["src/dev" "src/test"]
+                 :extra-deps  {org.clojure/test.check {:mvn/version "0.10.0-RC1"}
+                               midje/midje            {:mvn/version "1.9.9"}
+                               thheller/shadow-cljs   {:mvn/version "2.8.40"}}}}}

@@ -4,6 +4,7 @@
                        [com.fulcrologic.fulcro.dom :as dom]]
                 :clj  [[com.fulcrologic.fulcro.dom-server :as dom]])
             [com.fulcrologic.fulcro.components :as fc]
+            [edn-query-language.core :as eql]
             [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr]
             [com.fulcrologic.fulcro.application :as fa]
             [com.fulcrologic.fulcro.data-fetch :as df]
@@ -59,9 +60,8 @@
                          (cond-> (assoc-in st [:PAGE/users :PAGE/users :ui/current-id] id)
                                  (contains? (:user/id st) id) (assoc-in [:PAGE/users :PAGE/users :ui/current] [:user/id id])))))
   (remote [env]
-          (-> env
-              (fm/returning User)
-              (fm/with-target [:PAGE/users :PAGE/users :ui/current]))))
+          (assoc env
+            :ast (eql/query->ast [{[:user/id id] (fc/get-query User)}]))))
 
 
 (fm/defmutation user/set-color
