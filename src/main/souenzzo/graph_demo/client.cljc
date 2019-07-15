@@ -3,6 +3,8 @@
                        [com.fulcrologic.fulcro.networking.http-remote :as fhr]
                        [com.fulcrologic.fulcro.dom :as dom]]
                 :clj  [[com.fulcrologic.fulcro.dom-server :as dom]])
+            #?@(:cljsrn [["react" :as r]
+                         ["react-native" :as rn]])
             [com.fulcrologic.fulcro.components :as fc]
             [edn-query-language.core :as eql]
             [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr]
@@ -152,3 +154,25 @@
 (defn after-load
   []
   (fa/force-root-render! @state))
+
+(defn main-app
+  []
+  #?(:cljsrn
+     (let [txt #(r/createElement rn/Text #js {} %)
+           [root set-root] (r/useState (txt "Hello from cljs"))]
+       (fc/fragment
+         root
+         (r/createElement rn/Button #js {:title   "new root"
+                                         :onPress #(set-root (txt "Hello from new root"))})))))
+
+(defn rn-init
+  []
+  #?(:cljsrn main-app))
+
+(defn rn-main
+  []
+  #?(:cljsrn (.registerComponent rn/AppRegistry "graphDemo" rn-init)))
+
+(defn rn-after-load
+  []
+  (.warn js/console "WIP"))

@@ -4,4 +4,11 @@
                  :asset-path "/js/main"
                  :modules    {:main {:entries [souenzzo.graph-demo.client]}}
                  :devtools   {:preloads   [com.fulcrologic.fulcro.inspect.preload]
-                              :after-load souenzzo.graph-demo.client/after-load}}}}
+                              :after-load souenzzo.graph-demo.client/after-load}}
+          :rn   {:target           :react-native
+                 :output-dir       "cljs"
+                 :devtools         {:autoload   true
+                                    ;; :preloads   [souenzzo.graph-demo.client]
+                                    :after-load souenzzo.graph-demo.client/rn-after-load}
+                 :init-fn          souenzzo.graph-demo.client/rn-main
+                 :compiler-options {:reader-features #{:cljsrn}}}}}

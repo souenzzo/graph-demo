@@ -5,3 +5,6 @@
 .shadow-cljs/
 node_modules/
 target/
+android/.gradle/
+android/app/build/
+cljs/
