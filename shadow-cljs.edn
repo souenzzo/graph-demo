@@ -10,5 +10,5 @@
                  :devtools         {:autoload   true
                                     ;; :preloads   [souenzzo.graph-demo.client]
                                     :after-load souenzzo.graph-demo.client/after-load}
-                 :init-fn          souenzzo.graph-demo.client/rn-main
+                 :init-fn          souenzzo.graph-demo.client/main
                  :compiler-options {:reader-features #{:cljsrn}}}}}

@@ -68,7 +68,7 @@
     (view
       {}
       (text "current user: '" id "'"))
-    (text {} "Color: ")
+    (text "Color: ")
     (input {:value          (or color "#ffffff")
             :on-change-text #(fc/transact! this `[(user/set-color ~{:user/id    id
                                                                     :user/color %})])})
@@ -167,36 +167,31 @@
      (handler (update request :body conj :com.wsscode.pathom/trace)))))
 
 (def service
-  {:remotes {#?@(:cljs [:remote (-> {#?@(:cljsrn [:url "http://10.0.2.2:8080/api"])
+  {#?@(:cljsrn [:render-root! (fn [ui set-root]
+                                (set-root ui))])
+   :remotes {#?@(:cljs [:remote (-> {#?@(:cljsrn [:url "http://10.0.2.2:8080/api"])
                                      :request-middleware (-> (fhr/wrap-fulcro-request)
                                                              (trace-remote))}
                                     (fhr/fulcro-http-remote))])}})
+(defn app->react-component-target
+  [app]
+  (let [ref-set-root (atom nil)]
+    (fn []
+      #?(:cljs (let [[root set-root] (r/useState nil)]
+                 (reset! ref-set-root set-root)
+                 (when-not root
+                   (fa/mount! app Root (fn [ui]
+                                         (@ref-set-root ui))))
+                 (or root (fc/fragment)))))))
 
 
 (defn ^:export main
   [target-id]
   (let [app (fa/fulcro-app service)]
-    #?(:cljs (fa/mount! app Root (gdom/getElement target-id)))
+    #?(:cljsrn (.registerComponent rn/AppRegistry "graphDemo" (constantly (app->react-component-target app)))
+       :cljs   (fa/mount! app Root (gdom/getElement target-id)))
     (reset! state app)))
 
 (defn after-load
   []
   (fa/force-root-render! @state))
-
-(defn rn-main
-  []
-  (let [ref-set-root (atom nil)
-        init-fn (fn []
-                  #?(:cljs (let [[root set-root] (r/useState nil)]
-                             (reset! ref-set-root set-root)
-                             (swap! state (fn [app]
-                                            (or app
-                                                (doto (fa/fulcro-app
-                                                        (assoc service
-                                                          :render-root! (fn [ui _]
-                                                                          (.warn js/console (str "ok" (when root :ok)))
-                                                                          (@ref-set-root ui))))
-                                                  (fa/mount! Root ::nil)))))
-                             (.warn js/console (str "render!"))
-                             (or root (fc/fragment)))))]
-    #?(:cljsrn (.registerComponent rn/AppRegistry "graphDemo" (constantly init-fn)))))
