@@ -5,7 +5,8 @@
     "react-native": "0.59.10"
   },
   "scripts": {
-    "react-native": "react-native"
+    "rn-server": "react-native start",
+    "rn-android": "react-native run-android"
   },
   "devDependencies": {
     "shadow-cljs": "2.8.40"

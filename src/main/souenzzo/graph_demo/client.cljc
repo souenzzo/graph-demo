@@ -1,23 +1,48 @@
 (ns souenzzo.graph-demo.client
   (:require #?@(:cljs [[goog.dom :as gdom]
+                       ["react" :as r]
                        [com.fulcrologic.fulcro.networking.http-remote :as fhr]
                        [com.fulcrologic.fulcro.dom :as dom]]
                 :clj  [[com.fulcrologic.fulcro.dom-server :as dom]])
-            #?@(:cljsrn [["react" :as r]
-                         ["react-native" :as rn]])
+            #?@(:cljsrn [["react-native" :as rn]])
             [com.fulcrologic.fulcro.components :as fc]
             [edn-query-language.core :as eql]
             [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr]
             [com.fulcrologic.fulcro.application :as fa]
             [com.fulcrologic.fulcro.data-fetch :as df]
-            [com.fulcrologic.fulcro.mutations :as fm]))
+            [com.fulcrologic.fulcro.mutations :as fm]
+            [clojure.string :as string]))
 
+(defn button
+  [{:keys [on-press title]}]
+  #?(:cljsrn  (r/createElement rn/Button #js {:onPress on-press
+                                              :title   title})
+     :default (dom/button {:onClick on-press}
+                          title)))
+
+(defn text
+  [& txts]
+  #?(:cljsrn  (r/createElement rn/Text #js {} (string/join txts))
+     :default (string/join txts)))
+
+(defn view
+  [{:keys [background-color]} & child]
+  #?(:cljsrn  (apply r/createElement rn/View #js {} child)
+     :default (apply dom/div {:style {:backgroundColor background-color}} child)))
+
+
+(defn input
+  [{:keys [on-change-text value]}]
+  #?(:cljsrn  (r/createElement rn/TextInput #js {:onChangeText on-change-text
+                                                 :value        value})
+     :default (dom/input {:value    value
+                          :onChange #(-> % .-target .-value on-change-text)})))
 
 (fc/defsc Friend'sFriend [this {:user/keys [id]}]
   {:query [:user/id]
    :ident :user/id}
-  (dom/button {:onClick #(fc/transact! this `[(user/focus ~{:user/id id})])}
-              id))
+  (button {:on-press #(fc/transact! this `[(user/focus ~{:user/id id})])
+           :title    id}))
 
 (def ui-friend's-friend (fc/factory Friend'sFriend {:keyfn :user/id}))
 
@@ -26,10 +51,9 @@
            :user/color
            {:user/friends (fc/get-query Friend'sFriend)}]
    :ident :user/id}
-  (dom/div
-    {:style (cond-> {}
-                    color (assoc :backgroundColor color))}
-    id
+  (view
+    {:background-color color}
+    (text id)
     (map ui-friend's-friend friends)))
 
 (def ui-friend (fc/factory Friend {:keyfn :user/id}))
@@ -39,19 +63,18 @@
            :user/color
            {:user/friends (fc/get-query Friend)}]
    :ident :user/id}
-  (dom/div
-    (dom/div
-      "current user: '" id "'")
-    (dom/br)
-    "Color: " (dom/input {:value    (or color "#ffffff")
-                          :type     "color"
-                          :onChange #(fc/transact! this `[(user/set-color ~{:user/id    id
-                                                                            :user/color (-> % .-target .-value)})])})
-    (dom/div "'" id "'" " friend list:")
-    (dom/div
-      {:style {:borderWidth "3px"
-               :borderStyle "solid"
-               :borderColor "black"}}
+  (view
+    {}
+    (view
+      {}
+      (text "current user: '" id "'"))
+    (text {} "Color: ")
+    (input {:value          (or color "#ffffff")
+            :on-change-text #(fc/transact! this `[(user/set-color ~{:user/id    id
+                                                                    :user/color %})])})
+    (text "'" id "'" " friend list:")
+    (view
+      {}
       (map ui-friend friends))))
 
 
@@ -90,20 +113,20 @@
                      :ui/current-id "foo"
                      :ui/new-friend "bar"
                      :PAGE/id       :PAGE/users})}
-  (dom/div
-    (dom/input {:value    current-id
-                :onChange #(fm/set-value! this :ui/current-id (-> % .-target .-value))})
-    (dom/button {:onClick #(df/load! this [:user/id current-id] User
-                                     {:target [:PAGE/users :PAGE/users :ui/current]})}
-                ">")
-    (dom/hr)
-    "add a friend: "
-    (dom/input {:value    new-friend
-                :onChange #(fm/set-value! this :ui/new-friend (-> % .-target .-value))})
-    (dom/button
-      {:onClick #(fc/transact! this `[(user/add-friend ~{:user/id         current-id
-                                                         :user/new-friend new-friend})])}
-      "+")
+  (view
+    {}
+    (input {:value          current-id
+            :on-change-text #(fm/set-value! this :ui/current-id %)})
+    (button {:on-press #(df/load! this [:user/id current-id] User
+                                  {:target [:PAGE/users :PAGE/users :ui/current]})
+             :title    ">"})
+    (text "add a friend: ")
+    (input {:value          new-friend
+            :on-change-text #(fm/set-value! this :ui/new-friend %)})
+    (button
+      {:on-press #(fc/transact! this `[(user/add-friend ~{:user/id         current-id
+                                                          :user/new-friend new-friend})])
+       :title    "+"})
     (ui-user current)))
 
 (fm/defmutation user/add-friend
@@ -123,7 +146,7 @@
    :ident          (fn [] [ident id])
    :router-targets {:PAGE/users Users}
    :router-id      :PAGE/root-router}
-  (dom/div "404"))
+  (text "404"))
 
 (def ui-root-router (fc/factory RootRouter))
 
@@ -143,11 +166,16 @@
    (fn [request]
      (handler (update request :body conj :com.wsscode.pathom/trace)))))
 
+(def service
+  {:remotes {#?@(:cljs [:remote (-> {#?@(:cljsrn [:url "http://10.0.2.2:8080/api"])
+                                     :request-middleware (-> (fhr/wrap-fulcro-request)
+                                                             (trace-remote))}
+                                    (fhr/fulcro-http-remote))])}})
+
+
 (defn ^:export main
   [target-id]
-  (let [app (fa/fulcro-app #?(:cljs {:remotes {:remote (-> {:request-middleware (-> (fhr/wrap-fulcro-request)
-                                                                                    (trace-remote))}
-                                                           (fhr/fulcro-http-remote))}}))]
+  (let [app (fa/fulcro-app service)]
     #?(:cljs (fa/mount! app Root (gdom/getElement target-id)))
     (reset! state app)))
 
@@ -155,24 +183,20 @@
   []
   (fa/force-root-render! @state))
 
-(defn main-app
-  []
-  #?(:cljsrn
-     (let [txt #(r/createElement rn/Text #js {} %)
-           [root set-root] (r/useState (txt "Hello from cljs"))]
-       (fc/fragment
-         root
-         (r/createElement rn/Button #js {:title   "new root"
-                                         :onPress #(set-root (txt "Hello from new root"))})))))
-
-(defn rn-init
-  []
-  #?(:cljsrn main-app))
-
 (defn rn-main
   []
-  #?(:cljsrn (.registerComponent rn/AppRegistry "graphDemo" rn-init)))
-
-(defn rn-after-load
-  []
-  (.warn js/console "WIP"))
+  (let [ref-set-root (atom nil)
+        init-fn (fn []
+                  #?(:cljs (let [[root set-root] (r/useState nil)]
+                             (reset! ref-set-root set-root)
+                             (swap! state (fn [app]
+                                            (or app
+                                                (doto (fa/fulcro-app
+                                                        (assoc service
+                                                          :render-root! (fn [ui _]
+                                                                          (.warn js/console (str "ok" (when root :ok)))
+                                                                          (@ref-set-root ui))))
+                                                  (fa/mount! Root ::nil)))))
+                             (.warn js/console (str "render!"))
+                             (or root (fc/fragment)))))]
+    #?(:cljsrn (.registerComponent rn/AppRegistry "graphDemo" (constantly init-fn)))))

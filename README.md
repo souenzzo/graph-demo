@@ -24,6 +24,20 @@ Call `(user/-main)` function. Wait the `shadow-cljs` build
 Connect at [localhost:8080](http://localhost:8080)
 
 
+##### React native
+
+After get the web up'n'running, start the metro server
+
+```bash
+npm run rn-server
+```
+
+Then launch the app on emulator/app.
+
+```bash
+npm run rn-android
+```
+
 ## Hacking
 
 ```
