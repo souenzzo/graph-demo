@@ -8,8 +8,8 @@
            com.cognitect/transit-clj    {:mvn/version "0.8.313"}
            com.wsscode/pathom           {:mvn/version "2.2.17"}
            com.taoensso/timbre          {:mvn/version "4.10.0"}
-           com.fulcrologic/fulcro       {:git/url "git@github.com:fulcrologic/fulcro3.git"
-                                         :sha     "bc84329f3f7b3e6c5ef1a3ddf964cb06f52fb994"}
+           com.fulcrologic/fulcro       {:git/url "git@github.com:souenzzo/fulcro3.git"
+                                         :sha     "f385fd39eca1628b319d49ecdeea5b9af852f2c3"}
            clj-time/clj-time            {:mvn/version "0.15.1"}
            gnl/ghostwheel.stubs         {:mvn/version "0.4.1"}}
  :aliases {:dev {:extra-paths ["src/dev" "src/test"]

@@ -1,5 +1,6 @@
 (ns souenzzo.graph-demo.client
   (:require #?@(:cljs [[goog.dom :as gdom]
+                       [goog.object :as gobj]
                        ["react" :as r]
                        [com.fulcrologic.fulcro.networking.http-remote :as fhr]
                        [com.fulcrologic.fulcro.dom :as dom]]
@@ -11,7 +12,8 @@
             [com.fulcrologic.fulcro.application :as fa]
             [com.fulcrologic.fulcro.data-fetch :as df]
             [com.fulcrologic.fulcro.mutations :as fm]
-            [clojure.string :as string]))
+            [clojure.string :as string]
+            [cognitect.transit :as transit]))
 
 (defn button
   [{:keys [on-press title]}]
@@ -187,9 +189,16 @@
 
 (defn ^:export main
   [target-id]
-  (let [app (fa/fulcro-app service)]
+  (let [initial-db #?(:cljs (some->> (gobj/getValueByKeys js/document "body" "dataset" "initialDb")
+                                     (transit/read (transit/reader :json)))
+                      :default nil)
+        initial-db? (map? initial-db)
+        app (fa/fulcro-app (cond-> service
+                                   initial-db? (assoc :initial-db initial-db)))]
     #?(:cljsrn (.registerComponent rn/AppRegistry "graphDemo" (constantly (app->react-component-target app)))
-       :cljs   (fa/mount! app Root (gdom/getElement target-id)))
+       :cljs   (fa/mount! app Root (gdom/getElement target-id)
+                          {:hydrate?          initial-db?
+                           :initialize-state? (not initial-db?)}))
     (reset! state app)))
 
 (defn after-load

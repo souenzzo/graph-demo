@@ -8,15 +8,7 @@
             [clojure.java.io :as io]
             [crux.api :as crux]
             [com.fulcrologic.fulcro.mutations :as fm]
-            [edn-query-language.core :as eql])
-  (:import (java.io ByteArrayOutputStream)))
-
-(defn pr-transit-str
-  [x]
-  (let [boas (ByteArrayOutputStream.)
-        writer (transit/writer boas :json)]
-    (transit/write writer x)
-    (str boas)))
+            [edn-query-language.core :as eql]))
 
 (defn init
   [service]
@@ -33,7 +25,7 @@
   [app eql]
   (let [{::http/keys [service-fn]} app
         {:keys [body]} (response-for service-fn :post "/api"
-                                     :body (pr-transit-str eql))]
+                                     :body (gd/pr-transit-str eql))]
     (transit/read (transit/reader (io/input-stream (.getBytes body))
                                   :json))))
 

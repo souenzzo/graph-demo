@@ -12,11 +12,21 @@
             [com.fulcrologic.fulcro.dom-server :as dom]
             [com.fulcrologic.fulcro.components :as fc]
             [taoensso.timbre :as log]
+            [com.fulcrologic.fulcro.algorithms.normalize :refer [tree->db]]
             [io.pedestal.interceptor :as interceptor])
   (:import (crux.api ICruxAPI)
-           (java.time Duration)))
+           (java.time Duration)
+           (java.io ByteArrayOutputStream)))
 
 (set! *warn-on-reflection* true)
+
+(defn pr-transit-str
+  [x]
+  (let [boas (ByteArrayOutputStream.)
+        writer (transit/writer boas :json)]
+    (transit/write writer x)
+    (str boas)))
+
 
 (fc/defsc Index [this {:>/keys [root]}]
   {:query         [{:>/root (fc/get-query client/Root)}]
@@ -25,12 +35,14 @@
   (let [target-id "app"
         main-fn `client/main
         onload (str (munge (namespace main-fn)) "."
-                    (munge (name main-fn)) "(" (pr-str target-id) ")")]
+                    (munge (name main-fn)) "(" (pr-str target-id) ")")
+        initial-db (tree->db client/Root root true)]
     (dom/html
       (dom/head
         (dom/meta {:charset "utf-8"}))
       (dom/body
-        {:onload onload}
+        {:data-initial-db (pr-transit-str initial-db)
+         :onload          onload}
         (dom/div
           {:id target-id}
           (client/ui-root root))
@@ -43,10 +55,10 @@
    ::pc/output [:com.wsscode.pathom.viz.index-explorer/index]}
   {:com.wsscode.pathom.viz.index-explorer/index
    (p/transduce-maps
-     (remove (fn [[k v]]
+     (remove (fn [map-entry]
                (contains? #{::pc/resolve
                             ::pc/mutate}
-                          k)))
+                          (key map-entry))))
      (get env ::pc/indexes))})
 
 (pc/defresolver friends
@@ -145,15 +157,6 @@
                                         :event-log-dir "log/db-dir-1"
                                         :db-dir        "data/db-dir-1"}))
 
-(def service
-  {:env              :prod
-   ::timeout         timeout
-   ::system          system
-   ::http/port       8080
-   ::http/routes     routes
-   ::http/mime-types mime/default-mime-types
-   ::http/type       :jetty})
-
 (defn add-service-map
   [{::http/keys [interceptors]
     :as         service-map}]
@@ -166,6 +169,15 @@
                                       (map interceptor/interceptor))
                                 [[+service-map]
                                  interceptors]))))
+
+(def service
+  {:env              :prod
+   ::timeout         timeout
+   ::system          system
+   ::http/port       8080
+   ::http/routes     routes
+   ::http/mime-types mime/default-mime-types
+   ::http/type       :jetty})
 
 (defn default-interceptors
   [{:keys [env]
