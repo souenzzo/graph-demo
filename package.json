@@ -2,13 +2,13 @@
   "dependencies": {
     "react": "16.8.6",
     "react-dom": "16.8.6",
-    "react-native": "0.59.10"
+    "react-native": "0.60.4"
   },
   "scripts": {
     "rn-server": "react-native start",
     "rn-android": "react-native run-android"
   },
   "devDependencies": {
-    "shadow-cljs": "2.8.40"
+    "shadow-cljs": "2.8.41"
   }
 }
