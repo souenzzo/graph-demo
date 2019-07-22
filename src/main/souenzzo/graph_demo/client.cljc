@@ -189,13 +189,14 @@
 
 (defn ^:export main
   [target-id]
-  (let [initial-db #?(:cljs (some->> (gobj/getValueByKeys js/document "body" "dataset" "initialDb")
-                                     (transit/read (transit/reader :json)))
+  (let [initial-db #?(:cljsrn nil
+                      :cljs   (some->> (gobj/getValueByKeys js/document "body" "dataset" "initialDb")
+                                       (transit/read (transit/reader :json)))
                       :default nil)
         initial-db? (map? initial-db)
         app (fa/fulcro-app (cond-> service
                                    initial-db? (assoc :initial-db initial-db)))]
-    #?(:cljsrn (.registerComponent rn/AppRegistry "graphDemo" (constantly (app->react-component-target app)))
+    #?(:cljsrn (.registerComponent rn/AppRegistry "graphdemo" (constantly (app->react-component-target app)))
        :cljs   (fa/mount! app Root (gdom/getElement target-id)
                           {:hydrate?          initial-db?
                            :initialize-state? (not initial-db?)}))
