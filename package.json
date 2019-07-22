@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "shadow-cljs": "2.8.41",
-    "react-native-git-upgrade": "0.2.7"
+    "react-native-git-upgrade": "0.2.7",
+    "source-map-explorer": "2.0.1"
   }
 }
