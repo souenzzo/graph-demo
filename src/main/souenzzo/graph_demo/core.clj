@@ -7,6 +7,7 @@
             [com.wsscode.pathom.core :as p]
             [souenzzo.graph-demo.client :as client]
             [clojure.core.async :as async]
+            [clojure.core.async.impl.protocols :as async.protocols]
             [com.wsscode.pathom.connect :as pc]
             [clojure.string :as string]
             [com.fulcrologic.fulcro.dom-server :as dom]
@@ -20,13 +21,16 @@
 
 (set! *warn-on-reflection* true)
 
+(defn read-port?
+  [x]
+  (satisfies? async.protocols/ReadPort x))
+
 (defn pr-transit-str
   [x]
   (let [boas (ByteArrayOutputStream.)
         writer (transit/writer boas :json)]
     (transit/write writer x)
     (str boas)))
-
 
 (fc/defsc Index [this {:>/keys [root]}]
   {:query         [{:>/root (fc/get-query client/Root)}]
@@ -124,38 +128,51 @@
                   p/error-handler-plugin
                   p/trace-plugin]}))
 
-(defn api
-  [{:keys [body]
-    :as   request}]
-  (let [params (transit/read (transit/reader body :json))
-        result (async/<!! (parser request params))]
-    {:body   (fn [output]
-               (try
-                 (let [writer (transit/writer output :json)]
-                   (transit/write writer result))
-                 (catch Throwable e
-                   (log/error e))))
-     :status 200}))
+(def api
+  {:name  ::api
+   :enter (fn enter-api
+            [{{::keys [transit-type]
+               :keys  [body async-supported?]
+               :as    request} :request
+              :as              ctx}]
+            (let [params (transit/read (transit/reader body :json))
+                  result (parser request params)
+                  ->response (fn ->response [data]
+                               (assoc ctx :response {:body   (fn [output]
+                                                               (try
+                                                                 (let [writer (transit/writer output transit-type)]
+                                                                   (transit/write writer data))
+                                                                 (catch Throwable e
+                                                                   (log/error e))))
+                                                     :status 200}))]
+              (cond
+                (and (read-port? result) async-supported?) (async/go
+                                                             (->response (async/<! result)))
+                (read-port? result) (->response (async/<!! result))
+                :else (->response result))))})
 
 (defn index
   [_]
   (let [initial-state (fc/get-initial-state Index {})]
-    {:body    (string/join "\n"
-                           ["<!DOCTYPE html>"
-                            (dom/render-to-str (ui-index initial-state))])
+    {:body    (string/join "\n" ["<!DOCTYPE html>"
+                                 (dom/render-to-str (ui-index initial-state))])
      :headers {"Content-Security-Policy" ""
                "Content-Type"            (mime/default-mime-types "html")}
      :status  200}))
 
-(def routes
-  `#{["/" :get index]
-     ["/api" :post api]})
+(def not-found->app
+  {:name  ::not-found->app
+   :leave (fn [{:keys [response]
+                :as   ctx}]
+            (if (contains? response :status)
+              ctx
+              (assoc ctx :response {:headers {"Location" "/app"}
+                                    :status  301})))})
 
-(def timeout (Duration/ofSeconds 1))
-(defonce ^ICruxAPI system
-         (crux/start-standalone-system {:kv-backend    "crux.kv.memdb.MemKv"
-                                        :event-log-dir "log/db-dir-1"
-                                        :db-dir        "data/db-dir-1"}))
+(def routes
+  `#{["/app/*" :get index :route-name ::index*]
+     ["/app" :get index]
+     ["/api" :post api]})
 
 (defn add-service-map
   [{::http/keys [interceptors]
@@ -170,14 +187,22 @@
                                 [[+service-map]
                                  interceptors]))))
 
+(def timeout (Duration/ofSeconds 1))
+(defonce ^ICruxAPI system
+         (crux/start-standalone-system {:kv-backend    "crux.kv.memdb.MemKv"
+                                        :event-log-dir "log/db-dir-1"
+                                        :db-dir        "data/db-dir-1"}))
+
 (def service
-  {:env              :prod
-   ::timeout         timeout
-   ::system          system
-   ::http/port       8080
-   ::http/routes     routes
-   ::http/mime-types mime/default-mime-types
-   ::http/type       :jetty})
+  {:env                         :prod
+   ::timeout                    timeout
+   ::system                     system
+   ::transit-type               :json
+   ::http/not-found-interceptor not-found->app
+   ::http/port                  8080
+   ::http/routes                routes
+   ::http/mime-types            mime/default-mime-types
+   ::http/type                  :jetty})
 
 (defn default-interceptors
   [{:keys [env]
@@ -186,7 +211,8 @@
     (cond-> service-map
             dev? (update ::http/routes (fn [r]
                                          #(route/expand-routes r)))
-            dev? (assoc ::http/join? false)
+            dev? (assoc ::http/join? false
+                        ::transit-type :json-verbose)
             :always http/default-interceptors
             dev? http/dev-interceptors
             :always add-service-map)))
