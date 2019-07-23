@@ -164,7 +164,7 @@
   {:name  ::not-found->app
    :leave (fn [{:keys [response]
                 :as   ctx}]
-            (if (contains? response :status)
+            (if (http/response? response)
               ctx
               (assoc ctx :response {:headers {"Location" "/app"}
                                     :status  301})))})
