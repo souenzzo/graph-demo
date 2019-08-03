@@ -13,6 +13,7 @@
             [com.fulcrologic.fulcro.dom-server :as dom]
             [com.fulcrologic.fulcro.components :as fc]
             [taoensso.timbre :as log]
+            [cljs.compiler :as cljs.comp]
             [com.fulcrologic.fulcro.algorithms.normalize :refer [tree->db]]
             [io.pedestal.interceptor :as interceptor])
   (:import (crux.api ICruxAPI)
@@ -38,14 +39,15 @@
                     {:>/root (fc/get-initial-state client/Root _)})}
   (let [target-id "app"
         main-fn `client/main
-        onload (str (munge (namespace main-fn)) "."
-                    (munge (name main-fn)) "(" (pr-str target-id) ")")
+        onload (str (cljs.comp/munge main-fn) "()")
         initial-db (tree->db client/Root root true)]
     (dom/html
       (dom/head
         (dom/meta {:charset "utf-8"}))
       (dom/body
         {:data-initial-db (pr-transit-str initial-db)
+         :data-target-id  target-id
+         :data-remote-url "/api"
          :onload          onload}
         (dom/div
           {:id target-id}

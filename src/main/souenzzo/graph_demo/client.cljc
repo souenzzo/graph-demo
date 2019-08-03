@@ -168,13 +168,6 @@
    (fn [request]
      (handler (update request :body conj :com.wsscode.pathom/trace)))))
 
-(def service
-  {#?@(:cljsrn [:render-root! (fn [ui set-root]
-                                (set-root ui))])
-   :remotes {#?@(:cljs [:remote (-> {#?@(:cljsrn [:url "http://10.0.2.2:8080/api"])
-                                     :request-middleware (-> (fhr/wrap-fulcro-request)
-                                                             (trace-remote))}
-                                    (fhr/fulcro-http-remote))])}})
 (defn app->react-component-target
   [app]
   (let [ref-set-root (atom nil)]
@@ -188,16 +181,29 @@
 
 
 (defn ^:export main
-  [target-id]
-  (let [initial-db #?(:cljsrn nil
-                      :cljs   (some->> (gobj/getValueByKeys js/document "body" "dataset" "initialDb")
-                                       (transit/read (transit/reader :json)))
-                      :default nil)
+  []
+  (let [{:keys [targetId initialDb remoteUrl appKey]} #?(:cljsrn  {:appKey    "graphdemo"
+                                                                   :remoteUrl "http://10.0.2.2:8080/api"}
+                                                         :cljs    (->> (gobj/getValueByKeys js/document "body" "dataset")
+                                                                       (.entries js/Object)
+                                                                       (into {} (map (fn [[k v]]
+                                                                                       [(keyword k) v]))))
+                                                         :default {})
+
+        initial-db (some->> initialDb
+                            (transit/read (transit/reader :json)))
         initial-db? (map? initial-db)
-        app (fa/fulcro-app (cond-> service
-                                   initial-db? (assoc :initial-db initial-db)))]
-    #?(:cljsrn (.registerComponent rn/AppRegistry "graphdemo" (constantly (app->react-component-target app)))
-       :cljs   (fa/mount! app Root (gdom/getElement target-id)
+        service (cond-> {:remotes {:remote #?(:cljs    (-> {:url                remoteUrl
+                                                            :request-middleware (-> (fhr/wrap-fulcro-request)
+                                                                                    (trace-remote))}
+                                                           (fhr/fulcro-http-remote))
+                                              :default {})}}
+                        appKey (assoc :render-root! (fn [ui set-root]
+                                                      (set-root ui)))
+                        initial-db? (assoc :initial-db initial-db))
+        app (fa/fulcro-app service)]
+    #?(:cljsrn (.registerComponent rn/AppRegistry appKey (constantly (app->react-component-target app)))
+       :cljs   (fa/mount! app Root (gdom/getElement targetId)
                           {:hydrate?          initial-db?
                            :initialize-state? (not initial-db?)}))
     (reset! state app)))
