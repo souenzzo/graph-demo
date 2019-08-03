@@ -15,7 +15,8 @@
             [taoensso.timbre :as log]
             [cljs.compiler :as cljs.comp]
             [com.fulcrologic.fulcro.algorithms.normalize :refer [tree->db]]
-            [io.pedestal.interceptor :as interceptor])
+            [io.pedestal.interceptor :as interceptor]
+            [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr])
   (:import (crux.api ICruxAPI)
            (java.time Duration)
            (java.io ByteArrayOutputStream)))
@@ -67,6 +68,25 @@
                           (key map-entry))))
      (get env ::pc/indexes))})
 
+
+(pc/defresolver ssr-router
+  [ctx _]
+  {::pc/output [::fr/id
+                {::fr/current-route {:PAGE/users [:PAGE/ident
+                                                  :PAGE/id
+                                                  :ui/new-friend
+                                                  {:ui/current [:user/id]}
+                                                  :ui/current-id]}}]}
+  (let [user-id (or (some-> ctx :path-params :path (subs 5))
+                    "foo")]
+    {::fr/id            :PAGE/root-router
+     ::fr/current-route {:PAGE/users    []
+                         :PAGE/ident    :PAGE/users
+                         :PAGE/id       :PAGE/users
+                         :ui/new-friend "bar"
+                         :ui/current    {:user/id user-id}
+                         :ui/current-id user-id}}))
+
 (pc/defresolver friends
   [{::keys [system timeout]} {:user/keys [id]}]
   {::pc/input  #{:user/id}
@@ -115,25 +135,12 @@
       {:user/id id})))
 
 (def my-app-registry
-  [friends add-friend set-color index-explorer])
-
-(def parser
-  (p/parallel-parser
-    {::p/env     {::p/reader               [p/map-reader
-                                            pc/parallel-reader
-                                            pc/open-ident-reader
-                                            pc/index-reader
-                                            p/env-placeholder-reader]
-                  ::p/placeholder-prefixes #{">"}}
-     ::p/mutate  pc/mutate-async
-     ::p/plugins [(pc/connect-plugin {::pc/register my-app-registry})
-                  p/error-handler-plugin
-                  p/trace-plugin]}))
+  [friends add-friend set-color index-explorer ssr-router])
 
 (def api
   {:name  ::api
    :enter (fn enter-api
-            [{{::keys [transit-type]
+            [{{::keys [transit-type parser]
                :keys  [body async-supported?]
                :as    request} :request
               :as              ctx}]
@@ -154,11 +161,12 @@
                 :else (->response result))))})
 
 (defn index
-  [_]
-  (let [initial-state (fc/get-initial-state Index {})]
+  [{::keys [parser] :as request}]
+  (let [initial-state (async/<!! (parser request (fc/get-query Index)))]
     {:body    (string/join "\n" ["<!DOCTYPE html>"
                                  (dom/render-to-str (ui-index initial-state))])
      :headers {"Content-Security-Policy" ""
+               "Cache-Control"           "no-store"
                "Content-Type"            (mime/default-mime-types "html")}
      :status  200}))
 
@@ -172,7 +180,7 @@
                                     :status  301})))})
 
 (def routes
-  `#{["/app/*" :get index :route-name ::index*]
+  `#{["/app/*path" :get index :route-name ::index*]
      ["/app" :get index]
      ["/api" :post api]})
 
@@ -195,8 +203,23 @@
                                         :event-log-dir "log/db-dir-1"
                                         :db-dir        "data/db-dir-1"}))
 
+(def parser
+  (p/parallel-parser
+    {::p/mutate  pc/mutate-async
+     ::p/plugins [(pc/connect-plugin {::pc/register my-app-registry})
+                  p/error-handler-plugin
+                  p/trace-plugin]}))
+
+
 (def service
   {:env                         :prod
+   ::p/reader                   [p/map-reader
+                                 pc/parallel-reader
+                                 pc/open-ident-reader
+                                 pc/index-reader
+                                 p/env-placeholder-reader]
+   ::p/placeholder-prefixes     #{">"}
+   ::parser                     parser
    ::timeout                    timeout
    ::system                     system
    ::transit-type               :json
