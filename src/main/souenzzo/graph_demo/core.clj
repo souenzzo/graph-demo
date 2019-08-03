@@ -16,7 +16,8 @@
             [cljs.compiler :as cljs.comp]
             [com.fulcrologic.fulcro.algorithms.normalize :refer [tree->db]]
             [io.pedestal.interceptor :as interceptor]
-            [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr])
+            [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr]
+            [edn-query-language.core :as eql])
   (:import (crux.api ICruxAPI)
            (java.time Duration)
            (java.io ByteArrayOutputStream)))
@@ -62,29 +63,32 @@
    ::pc/output [:com.wsscode.pathom.viz.index-explorer/index]}
   {:com.wsscode.pathom.viz.index-explorer/index
    (p/transduce-maps
-     (remove (fn [map-entry]
-               (contains? #{::pc/resolve
-                            ::pc/mutate}
-                          (key map-entry))))
+     (remove (comp #{::pc/resolve ::pc/mutate} key))
      (get env ::pc/indexes))})
-
 
 (pc/defresolver ssr-router
   [ctx _]
-  {::pc/output [::fr/id
+  {::pc/params [:pathname]
+   ::pc/output [::fr/id
                 {::fr/current-route {:PAGE/users [:PAGE/ident
                                                   :PAGE/id
                                                   :ui/new-friend
-                                                  {:ui/current [:user/id]}
+                                                  {:current [:user/id]}
                                                   :ui/current-id]}}]}
   (let [user-id (or (some-> ctx :path-params :path (subs 5))
+                    (some-> (p/params ctx)
+                            (update :pathname (fn [x]
+                                                (when (> (count x) 10)
+                                                  x)))
+                            :pathname
+                            (subs 10))
                     "foo")]
     {::fr/id            :PAGE/root-router
-     ::fr/current-route {:PAGE/users    []
+     ::fr/current-route {:PAGE/users    true
                          :PAGE/ident    :PAGE/users
                          :PAGE/id       :PAGE/users
                          :ui/new-friend "bar"
-                         :ui/current    {:user/id user-id}
+                         :current       {:user/id user-id}
                          :ui/current-id user-id}}))
 
 (pc/defresolver friends
@@ -137,6 +141,18 @@
 (def my-app-registry
   [friends add-friend set-color index-explorer ssr-router])
 
+(defn >params
+  [ast]
+  (if (and (contains? ast :children)
+           (or (= :root (:type ast))
+               (and (= :join (:type ast))
+                    (not (empty? (:params ast)))
+                    (= ">" (namespace (:dispatch-key ast))))))
+    (update ast :children (partial mapv (fn [x]
+                                          (>params (update x :params (partial merge (:params ast)))))))
+    ast))
+
+
 (def api
   {:name  ::api
    :enter (fn enter-api
@@ -145,7 +161,11 @@
                :as    request} :request
               :as              ctx}]
             (let [params (transit/read (transit/reader body :json))
-                  result (parser request params)
+                  query (-> params
+                            eql/query->ast
+                            >params
+                            eql/ast->query)
+                  result (parser request query)
                   ->response (fn ->response [data]
                                (assoc ctx :response {:body   (fn [output]
                                                                (try
@@ -176,7 +196,8 @@
                 :as   ctx}]
             (if (http/response? response)
               ctx
-              (assoc ctx :response {:headers {"Location" "/app"}
+              (assoc ctx :response {:headers {"Location"      "/app"
+                                              "Cache-Control" "no-store"}
                                     :status  301})))})
 
 (def routes

@@ -2,6 +2,8 @@
   (:require #?@(:cljs [[goog.dom :as gdom]
                        [goog.object :as gobj]
                        ["react" :as r]
+                       [goog.events :as gevt]
+                       [goog.history.EventType :as event-type]
                        [com.fulcrologic.fulcro.networking.http-remote :as fhr]
                        [com.fulcrologic.fulcro.dom :as dom]]
                 :clj  [[com.fulcrologic.fulcro.dom-server :as dom]])
@@ -13,14 +15,18 @@
             [com.fulcrologic.fulcro.data-fetch :as df]
             [com.fulcrologic.fulcro.mutations :as fm]
             [clojure.string :as string]
-            [cognitect.transit :as transit]))
+            [cognitect.transit :as transit])
+  #?(:cljs (:import (goog.history Html5History))))
+
 
 (defn button
-  [{:keys [on-press title]}]
+  [app {:keys [on-press title href]}]
   #?(:cljsrn  (r/createElement rn/Button #js {:onPress on-press
                                               :title   title})
-     :default (dom/button {:onClick on-press}
-                          title)))
+     :default (if href
+                (dom/a {:href href} title)
+                (dom/button {:onClick on-press}
+                            title))))
 
 (defn text
   [& txts]
@@ -43,8 +49,8 @@
 (fc/defsc Friend'sFriend [this {:user/keys [id]}]
   {:query [:user/id]
    :ident :user/id}
-  (button {:on-press #(fc/transact! this `[(user/focus ~{:user/id id})])
-           :title    id}))
+  (button this {:href  (str "/app/user/" id)
+                :title (str id ">")}))
 
 (def ui-friend's-friend (fc/factory Friend'sFriend {:keyfn :user/id}))
 
@@ -85,7 +91,7 @@
   (action [{:keys [state]}]
           (swap! state (fn [st]
                          (cond-> (assoc-in st [:PAGE/users :PAGE/users :ui/current-id] id)
-                                 (contains? (:user/id st) id) (assoc-in [:PAGE/users :PAGE/users :ui/current] [:user/id id])))))
+                                 (contains? (:user/id st) id) (assoc-in [:PAGE/users :PAGE/users :current] [:user/id id])))))
   (remote [env]
           (assoc env
             :ast (eql/query->ast [{[:user/id id] (fc/get-query User)}]))))
@@ -102,12 +108,13 @@
 (def ui-user (fc/factory User {:keyfn :user/id}))
 
 (fc/defsc Users [this {:PAGE/keys [ident id]
-                       :ui/keys   [current current-id new-friend]}]
+                       :keys      [current]
+                       :ui/keys   [current-id new-friend]}]
   {:query         [:PAGE/ident
                    :PAGE/id
                    :ui/new-friend
                    :ui/current-id
-                   {:ui/current (fc/get-query User)}]
+                   {:current (fc/get-query User)}]
    :ident         (fn []
                     [ident id])
    :initial-state (fn [_]
@@ -119,16 +126,15 @@
     {}
     (input {:value          current-id
             :on-change-text #(fm/set-value! this :ui/current-id %)})
-    (button {:on-press #(df/load! this [:user/id current-id] User
-                                  {:target [:PAGE/users :PAGE/users :ui/current]})
-             :title    ">"})
+    (button this {:href  (str "/app/user/" current-id)
+                  :title ">"})
     (text "add a friend: ")
     (input {:value          new-friend
             :on-change-text #(fm/set-value! this :ui/new-friend %)})
-    (button
-      {:on-press #(fc/transact! this `[(user/add-friend ~{:user/id         current-id
-                                                          :user/new-friend new-friend})])
-       :title    "+"})
+    (button this
+            {:on-press #(fc/transact! this `[(user/add-friend ~{:user/id         current-id
+                                                                :user/new-friend new-friend})])
+             :title    "+"})
     (ui-user current)))
 
 (fm/defmutation user/add-friend
@@ -179,7 +185,6 @@
                                          (@ref-set-root ui))))
                  (or root (fc/fragment)))))))
 
-
 (defn ^:export main
   []
   (let [{:keys [targetId initialDb remoteUrl appKey]} #?(:cljsrn  {:appKey    "graphdemo"
@@ -189,19 +194,35 @@
                                                                        (into {} (map (fn [[k v]]
                                                                                        [(keyword k) v]))))
                                                          :default {})
-
-        initial-db (some->> initialDb
-                            (transit/read (transit/reader :json)))
+        initial-db #?(:cljs (some->> initialDb
+                                     (transit/read (transit/reader :json)))
+                      :default nil)
         initial-db? (map? initial-db)
-        service (cond-> {:remotes {:remote #?(:cljs    (-> {:url                remoteUrl
-                                                            :request-middleware (-> (fhr/wrap-fulcro-request)
-                                                                                    (trace-remote))}
-                                                           (fhr/fulcro-http-remote))
-                                              :default {})}}
+        service (cond-> #?(:cljs    {:shared  {:history (new Html5History)}
+                                     :remotes {:remote  (-> {:url                remoteUrl
+                                                             :request-middleware (-> (fhr/wrap-fulcro-request)
+                                                                                     (trace-remote))}
+                                                            (fhr/fulcro-http-remote))
+                                               :default {}}}
+                           :default {})
                         appKey (assoc :render-root! (fn [ui set-root]
                                                       (set-root ui)))
                         initial-db? (assoc :initial-db initial-db))
-        app (fa/fulcro-app service)]
+        client-did-mount (fn [app]
+                           #?(:cljs (let [history (:history (:shared service))]
+                                      (doto history
+                                        (gevt/listen event-type/NAVIGATE #(when-let [token (.-token %)]
+                                                                            (df/load! app :>/load Root
+                                                                                      {:params {:pathname token}
+                                                                                       :target []})))
+                                        (.setUseFragment false)
+                                        (.setPathPrefix "http://localhost:8080")
+                                        (.setEnabled true))
+                                      (js/addEventListener "click" (fn [e]
+                                                                     (when-let [pathname (-> e .-target .-pathname)]
+                                                                       (.preventDefault e)
+                                                                       (.setToken history pathname)))))))
+        app (fa/fulcro-app (assoc service :client-did-mount client-did-mount))]
     #?(:cljsrn (.registerComponent rn/AppRegistry appKey (constantly (app->react-component-target app)))
        :cljs   (fa/mount! app Root (gdom/getElement targetId)
                           {:hydrate?          initial-db?
