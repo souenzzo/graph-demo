@@ -10,7 +10,7 @@
     "rn-android": "react-native run-android"
   },
   "devDependencies": {
-    "shadow-cljs": "2.8.42",
+    "shadow-cljs": "2.8.44",
     "source-map-explorer": "2.0.1"
   }
 }
