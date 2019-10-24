@@ -1,1 +1,1 @@
-import "./cljs/index.js"
+import "./target/rn/index.js"

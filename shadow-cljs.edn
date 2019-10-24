@@ -7,7 +7,7 @@
                                     :after-load souenzzo.graph-demo.client/after-load}
                  :compiler-options {:source-map true}}
           :rn   {:target           :react-native
-                 :output-dir       "cljs"
+                 :output-dir       "target/rn"
                  :devtools         {:autoload   true
                                     ;; :preloads   [souenzzo.graph-demo.client]
                                     :after-load souenzzo.graph-demo.client/after-load}
