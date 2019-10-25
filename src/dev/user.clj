@@ -11,7 +11,7 @@
 (defn -main
   [& _]
   (shadow.api/watch :main)
-  (shadow.api/watch :rn)
+  #_(shadow.api/watch :rn)
   (swap! state (fn [st]
                  (when st
                    (http/stop st))
