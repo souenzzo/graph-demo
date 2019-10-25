@@ -3,8 +3,6 @@
            juxt/crux                    {:mvn/version "19.07-1.1.1-alpha"}
            io.pedestal/pedestal.service {:mvn/version "0.5.7"}
            io.pedestal/pedestal.jetty   {:mvn/version "0.5.7"}
-           org.clojure/core.async       {:mvn/version "0.4.500"}
-           edn-query-language/eql       {:mvn/version "0.0.9"}
            com.cognitect/transit-clj    {:mvn/version "0.8.319"}
            com.wsscode/pathom           {:mvn/version "2.2.26"}
            com.taoensso/timbre          {:mvn/version "4.10.0"}

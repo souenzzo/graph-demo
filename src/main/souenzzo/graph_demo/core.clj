@@ -1,32 +1,25 @@
 (ns souenzzo.graph-demo.core
-  (:require [io.pedestal.http :as http]
-            [crux.api :as crux]
-            [io.pedestal.http.route :as route]
-            [ring.util.mime-type :as mime]
-            [cognitect.transit :as transit]
-            [com.wsscode.pathom.core :as p]
-            [souenzzo.graph-demo.client :as client]
-            [clojure.core.async :as async]
-            [clojure.core.async.impl.protocols :as async.protocols]
-            [com.wsscode.pathom.connect :as pc]
+  (:require [cljs.compiler :as cljs.comp]
             [clojure.string :as string]
-            [com.fulcrologic.fulcro.dom-server :as dom]
-            [com.fulcrologic.fulcro.components :as fc]
-            [taoensso.timbre :as log]
-            [cljs.compiler :as cljs.comp]
+            [cognitect.transit :as transit]
             [com.fulcrologic.fulcro.algorithms.normalize :refer [tree->db]]
-            [io.pedestal.interceptor :as interceptor]
+            [com.fulcrologic.fulcro.components :as fc]
+            [com.fulcrologic.fulcro.dom-server :as dom]
             [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr]
-            [edn-query-language.core :as eql])
+            [com.wsscode.pathom.connect :as pc]
+            [com.wsscode.pathom.core :as p]
+            [crux.api :as crux]
+            [io.pedestal.http :as http]
+            [io.pedestal.http.route :as route]
+            [io.pedestal.interceptor :as interceptor]
+            [ring.util.mime-type :as mime]
+            [souenzzo.graph-demo.client :as client]
+            [taoensso.timbre :as log])
   (:import (crux.api ICruxAPI)
            (java.time Duration)
            (java.io ByteArrayOutputStream)))
 
 (set! *warn-on-reflection* true)
-
-(defn read-port?
-  [x]
-  (satisfies? async.protocols/ReadPort x))
 
 (defn pr-transit-str
   [x]
@@ -40,8 +33,7 @@
    :initial-state (fn [_]
                     {#_#_:>/root (fc/get-initial-state client/Root _)})}
   (let [target-id "app"
-        main-fn `client/main
-        onload (str (cljs.comp/munge main-fn) "()")
+        onload "souenzzo.graph_demo.client()"
         #_#_initial-db (tree->db client/Root root true)]
     (dom/html
       (dom/head
@@ -96,13 +88,12 @@
   {::pc/input  #{:user/id}
    ::pc/output [:user/color
                 {:user/friends [:user/id]}]}
-  (async/thread
-    (let [db (crux/db system)
-          user-id (keyword "user.id" (str id))
-          {:keys [user/friends user/color]} (crux/entity db user-id)]
-      {:user/color   (or color "#ffffff")
-       :user/friends (for [friend friends]
-                       {:user/id (name friend)})})))
+  (let [db (crux/db system)
+        user-id (keyword "user.id" (str id))
+        {:keys [user/friends user/color]} (crux/entity db user-id)]
+    {:user/color   (or color "#ffffff")
+     :user/friends (for [friend friends]
+                     {:user/id (name friend)})}))
 
 (pc/defmutation add-friend
   [{::keys [system timeout]} {:user/keys [id new-friend]}]
@@ -110,18 +101,17 @@
    ::pc/output [:user/id]
    ::pc/params [:user/id
                 :user/new-friend]}
-  (async/thread
-    (let [db (crux/db system)
-          user-id (keyword "user.id" (str id))
-          new-friend-id (keyword "user.id" (str new-friend))
-          {:keys [user/friends]} (crux/entity db (keyword "user.id" (str id)))
-          new-friends (into #{new-friend-id} friends)
-          tx [[:crux.tx/put
-               {:crux.db/id   user-id
-                :user/friends (vec new-friends)}]]
-          {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
-      (crux/sync system tx-time timeout)
-      {:user/id id})))
+  (let [db (crux/db system)
+        user-id (keyword "user.id" (str id))
+        new-friend-id (keyword "user.id" (str new-friend))
+        {:keys [user/friends]} (crux/entity db (keyword "user.id" (str id)))
+        new-friends (into #{new-friend-id} friends)
+        tx [[:crux.tx/put
+             {:crux.db/id   user-id
+              :user/friends (vec new-friends)}]]
+        {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
+    (crux/sync system tx-time timeout)
+    {:user/id id}))
 
 (pc/defmutation set-color
   [{::keys [system timeout]} {:user/keys [id color]}]
@@ -129,60 +119,34 @@
    ::pc/output [:user/id]
    ::pc/params [:user/id
                 :user/color]}
-  (async/thread
-    (let [db (crux/db system)
-          e (crux/entity db (keyword "user.id" (str id)))
-          tx [[:crux.tx/put
-               (assoc e :user/color color)]]
-          {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
-      (crux/sync system tx-time timeout)
-      {:user/id id})))
+  (let [db (crux/db system)
+        e (crux/entity db (keyword "user.id" (str id)))
+        tx [[:crux.tx/put
+             (assoc e :user/color color)]]
+        {:crux.tx/keys [tx-time]} (crux/submit-tx system tx)]
+    (crux/sync system tx-time timeout)
+    {:user/id id}))
 
 (def my-app-registry
   [friends add-friend set-color index-explorer ssr-router])
 
-(defn >params
-  [ast]
-  (if (and (contains? ast :children)
-           (or (= :root (:type ast))
-               (and (= :join (:type ast))
-                    (not (empty? (:params ast)))
-                    (= ">" (namespace (:dispatch-key ast))))))
-    (update ast :children (partial mapv (fn [x]
-                                          (>params (update x :params (partial merge (:params ast)))))))
-    ast))
-
-
-(def api
-  {:name  ::api
-   :enter (fn enter-api
-            [{{::keys [transit-type parser]
-               :keys  [body async-supported?]
-               :as    request} :request
-              :as              ctx}]
-            (let [params (transit/read (transit/reader body :json))
-                  query (-> params
-                            eql/query->ast
-                            >params
-                            eql/ast->query)
-                  result (parser request query)
-                  ->response (fn ->response [data]
-                               (assoc ctx :response {:body   (fn [output]
-                                                               (try
-                                                                 (let [writer (transit/writer output transit-type)]
-                                                                   (transit/write writer data))
-                                                                 (catch Throwable e
-                                                                   (log/error e))))
-                                                     :status 200}))]
-              (cond
-                (and (read-port? result) async-supported?) (async/go
-                                                             (->response (async/<! result)))
-                (read-port? result) (->response (async/<!! result))
-                :else (->response result))))})
+(defn api
+  [{::keys [transit-type parser]
+    :keys  [body]
+    :as    request}]
+  (let [query (transit/read (transit/reader body :json))
+        result (parser request query)]
+    {:body   (fn [out]
+               (try
+                 (let [writer (transit/writer out transit-type)]
+                   (transit/write writer result))
+                 (catch Throwable e
+                   (log/error e))))
+     :status 200}))
 
 (defn index
   [{::keys [parser] :as request}]
-  (let [initial-state {} #_(async/<!! (parser request (fc/get-query Index)))]
+  (let [initial-state {} #_(parser request (fc/get-query Index))]
     {:body    (string/join "\n" ["<!DOCTYPE html>"
                                  (dom/render-to-str (ui-index initial-state))])
      :headers {"Content-Security-Policy" ""
@@ -225,8 +189,8 @@
                                         :db-dir        "data/db-dir-1"}))
 
 (def parser
-  (p/parallel-parser
-    {::p/mutate  pc/mutate-async
+  (p/parser
+    {::p/mutate  pc/mutate
      ::p/plugins [(pc/connect-plugin {::pc/register my-app-registry})
                   p/error-handler-plugin
                   p/trace-plugin]}))
@@ -235,7 +199,7 @@
 (def service
   {:env                         :prod
    ::p/reader                   [p/map-reader
-                                 pc/parallel-reader
+                                 pc/reader2
                                  pc/open-ident-reader
                                  pc/index-reader
                                  p/env-placeholder-reader]
