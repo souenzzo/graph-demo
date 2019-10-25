@@ -37,6 +37,28 @@ $ npm start
 
 Connect at [localhost:8080](http://localhost:8080)
 
+## Running "production" jar
+
+Install npm deps
+```bash
+$ npm install
+```
+
+Generate uberjar
+
+```bash
+$ lein uberjar
+```
+
+And run
+
+```bash
+java -jar target/graph-demo.jar
+```
+
+Connect at [localhost:8080](http://localhost:8080)
+
+
 ##### React native (not working)
 
 After get the web up'n'running, start the metro server

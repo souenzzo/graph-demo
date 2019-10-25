@@ -3,6 +3,7 @@
                  :output-dir       "target/public/js/main"
                  :asset-path       "/js/main"
                  :modules          {:main {:entries [souenzzo.graph-demo.client]}}
+                 :release          {:output-dir "resources/public/js/main"}
                  :devtools         {:preloads   [com.fulcrologic.fulcro.inspect.preload]
                                     :after-load souenzzo.graph-demo.client/after-load}
                  :compiler-options {:source-map true}}

@@ -127,3 +127,5 @@ buck-out/
 
 # CocoaPods
 /ios/Pods/
+
+resources/public/js

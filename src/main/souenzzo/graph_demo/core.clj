@@ -1,4 +1,5 @@
 (ns souenzzo.graph-demo.core
+  (:gen-class)
   (:require [clojure.string :as string]
             [cognitect.transit :as transit]
             [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
@@ -11,8 +12,7 @@
             [io.pedestal.interceptor :as interceptor]
             [ring.util.mime-type :as mime]
             [taoensso.timbre :as log])
-  (:import (crux.api ICruxAPI)
-           (java.time Duration)
+  (:import (java.time Duration)
            (java.io ByteArrayOutputStream)))
 
 (set! *warn-on-reflection* true)
@@ -51,7 +51,7 @@
     (dom/body
       {:data-target-id  target-id
        :data-remote-url remote-url
-       :data-trace trace
+       :data-trace      trace
        :onload          onload}
       (dom/div
         {:id target-id})
@@ -167,10 +167,6 @@
                                  interceptors]))))
 
 (def timeout (Duration/ofSeconds 1))
-(defonce ^ICruxAPI system
-         (crux/start-standalone-system {:kv-backend    "crux.kv.memdb.MemKv"
-                                        :event-log-dir "log/db-dir-1"
-                                        :db-dir        "data/db-dir-1"}))
 
 (def parser
   (p/parser
@@ -190,7 +186,6 @@
    ::p/placeholder-prefixes     #{">"}
    ::parser                     parser
    ::timeout                    timeout
-   ::system                     system
    ::transit-type               :json
    ::http/not-found-interceptor not-found->app
    ::http/port                  8080
@@ -201,8 +196,12 @@
 (defn default-interceptors
   [{:keys [env]
     :as   service-map}]
-  (let [dev? (= env :dev)]
+  (let [dev? (= env :dev)
+        system (crux/start-standalone-system {:kv-backend    "crux.kv.memdb.MemKv"
+                                              :event-log-dir "log/db-dir-1"
+                                              :db-dir        "data/db-dir-1"})]
     (cond-> service-map
+            :always (assoc ::system system)
             dev? (update ::http/routes (fn [r]
                                          #(route/expand-routes r)))
             dev? (assoc ::http/join? false
@@ -210,3 +209,11 @@
             :always http/default-interceptors
             dev? http/dev-interceptors
             :always add-service-map)))
+
+(defn -main
+  [& _]
+  (-> service
+      (assoc ::http/resource-path "public")
+      default-interceptors
+      http/create-server
+      http/start))
