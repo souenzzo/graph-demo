@@ -6,6 +6,7 @@
     "react-native": "0.61.2"
   },
   "scripts": {
+    "start": "shadow-cljs run user/-main",
     "rn-server": "react-native start",
     "rn-android": "react-native run-android"
   },

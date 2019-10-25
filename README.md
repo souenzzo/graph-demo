@@ -5,12 +5,11 @@ A simple demo using
 [pathom](https://github.com/wilkerlucio/pathom) and
 [crux](https://github.com/juxt/crux)
 
-## Running
+## Running (for clj devs)
 
 Install `npm` deps
 ```bash
 $ npm install
-
 ```
 
 Start a REPL with `dev` profile 
@@ -23,8 +22,22 @@ Call `(user/-main)` function. Wait the `shadow-cljs` build
 
 Connect at [localhost:8080](http://localhost:8080)
 
+## Running (for js devs)
 
-##### React native
+Install `npm` deps
+```bash
+$ npm install
+```
+
+Start shadow-cljs via npm
+
+```bash
+$ npm start
+```
+
+Connect at [localhost:8080](http://localhost:8080)
+
+##### React native (not working)
 
 After get the web up'n'running, start the metro server
 

@@ -4,12 +4,12 @@
             [shadow.cljs.devtools.server :as shadow.server]
             [io.pedestal.http :as http]))
 
-(prn (shadow.server/start!))
-
 (defonce state (atom nil))
 
 (defn -main
+  {:shadow/requires-server true}
   [& _]
+  (shadow.server/start!)
   (shadow.api/watch :main)
   #_(shadow.api/watch :rn)
   (swap! state (fn [st]
