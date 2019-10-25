@@ -1,11 +1,8 @@
 (ns souenzzo.graph-demo.core
-  (:require [cljs.compiler :as cljs.comp]
-            [clojure.string :as string]
+  (:require [clojure.string :as string]
             [cognitect.transit :as transit]
-            [com.fulcrologic.fulcro.algorithms.normalize :refer [tree->db]]
-            [com.fulcrologic.fulcro.components :as fc]
+            [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
             [com.fulcrologic.fulcro.dom-server :as dom]
-            [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr]
             [com.wsscode.pathom.connect :as pc]
             [com.wsscode.pathom.core :as p]
             [crux.api :as crux]
@@ -13,7 +10,6 @@
             [io.pedestal.http.route :as route]
             [io.pedestal.interceptor :as interceptor]
             [ring.util.mime-type :as mime]
-            [souenzzo.graph-demo.client :as client]
             [taoensso.timbre :as log])
   (:import (crux.api ICruxAPI)
            (java.time Duration)
@@ -21,77 +17,66 @@
 
 (set! *warn-on-reflection* true)
 
+(defn pr-transit!
+  [out type x]
+  (let [writer (transit/writer out type)]
+    (transit/write writer x)))
+
 (defn pr-transit-str
-  [x]
-  (let [boas (ByteArrayOutputStream.)
-        writer (transit/writer boas :json)]
-    (transit/write writer x)
+  [type x]
+  (let [boas (ByteArrayOutputStream.)]
+    (pr-transit! boas type x)
     (str boas)))
 
-(fc/defsc Index [this {:>/keys [#_root]}]
-  {:query         [#_{:>/root (fc/get-query client/Root)}]
-   :initial-state (fn [_]
-                    {#_#_:>/root (fc/get-initial-state client/Root _)})}
-  (let [target-id "app"
-        onload "souenzzo.graph_demo.client()"
-        #_#_initial-db (tree->db client/Root root true)]
-    (dom/html
-      (dom/head
-        (dom/meta {:charset "utf-8"}))
-      (dom/body
-        {#_#_:data-initial-db (pr-transit-str initial-db)
-         :data-target-id  target-id
-         :data-remote-url "/api"
-         :onload          onload}
-        (dom/div
-          {:id target-id}
-          #_(client/ui-root root))
-        (dom/script {:src "/js/main/main.js"})))))
 
-(def ui-index (fc/factory Index))
+(pc/defresolver resolver-index [env input]
+  {::pc/output [::target-id
+                ::remote-url
+                ::trace
+                ::onload]}
+  {::target-id  "app"
+   ::remote-url "/api"
+   ::trace      "on"
+   ::onload     "souenzzo.graph_demo.client.main()"})
+
+(defsc Index [this {::keys [target-id onload remote-url trace]}]
+  {:query         [::target-id
+                   ::remote-url
+                   ::trace
+                   ::onload]
+   :initial-state (fn [_] {})}
+  (dom/html
+    (dom/head
+      (dom/meta {:charset "utf-8"}))
+    (dom/body
+      {:data-target-id  target-id
+       :data-remote-url remote-url
+       :data-trace trace
+       :onload          onload}
+      (dom/div
+        {:id target-id})
+      (dom/script {:src "/js/main/main.js"}))))
+
+(def ui-index (comp/factory Index))
 
 (pc/defresolver index-explorer [env _]
   {::pc/input  #{:com.wsscode.pathom.viz.index-explorer/id}
    ::pc/output [:com.wsscode.pathom.viz.index-explorer/index]}
-  {:com.wsscode.pathom.viz.index-explorer/index
-   (p/transduce-maps
-     (remove (comp #{::pc/resolve ::pc/mutate} key))
-     (get env ::pc/indexes))})
-
-(pc/defresolver ssr-router
-  [ctx _]
-  {::pc/params [:pathname]
-   ::pc/output [::fr/id
-                {::fr/current-route {:PAGE/users [:PAGE/ident
-                                                  :PAGE/id
-                                                  :ui/new-friend
-                                                  {:current [:user/id]}
-                                                  :ui/current-id]}}]}
-  (let [user-id (or (some-> ctx :path-params :path (subs 5))
-                    (some-> (p/params ctx)
-                            (update :pathname (fn [x]
-                                                (when (> (count x) 10)
-                                                  x)))
-                            :pathname
-                            (subs 10))
-                    "foo")]
-    {::fr/id            :PAGE/root-router
-     ::fr/current-route {:PAGE/users    true
-                         :PAGE/ident    :PAGE/users
-                         :PAGE/id       :PAGE/users
-                         :ui/new-friend "bar"
-                         :current       {:user/id user-id}
-                         :ui/current-id user-id}}))
+  (let [index (p/transduce-maps
+                (remove (comp #{::pc/resolve ::pc/mutate} key))
+                (get env ::pc/indexes))]
+    {:com.wsscode.pathom.viz.index-explorer/index index}))
 
 (pc/defresolver friends
-  [{::keys [system timeout]} {:user/keys [id]}]
+  [{::keys [system]} {:user/keys [id]}]
   {::pc/input  #{:user/id}
    ::pc/output [:user/color
                 {:user/friends [:user/id]}]}
   (let [db (crux/db system)
         user-id (keyword "user.id" (str id))
-        {:keys [user/friends user/color]} (crux/entity db user-id)]
-    {:user/color   (or color "#ffffff")
+        {:keys [user/friends user/color]
+         :or   {color "#ffffff"}} (crux/entity db user-id)]
+    {:user/color   color
      :user/friends (for [friend friends]
                      {:user/id (name friend)})}))
 
@@ -128,7 +113,7 @@
     {:user/id id}))
 
 (def my-app-registry
-  [friends add-friend set-color index-explorer ssr-router])
+  [friends add-friend set-color index-explorer resolver-index])
 
 (defn api
   [{::keys [transit-type parser]
@@ -138,17 +123,16 @@
         result (parser request query)]
     {:body   (fn [out]
                (try
-                 (let [writer (transit/writer out transit-type)]
-                   (transit/write writer result))
+                 (pr-transit! out transit-type result)
                  (catch Throwable e
                    (log/error e))))
      :status 200}))
 
 (defn index
   [{::keys [parser] :as request}]
-  (let [initial-state {} #_(parser request (fc/get-query Index))]
+  (let [index (parser request (comp/get-query Index))]
     {:body    (string/join "\n" ["<!DOCTYPE html>"
-                                 (dom/render-to-str (ui-index initial-state))])
+                                 (dom/render-to-str (ui-index index))])
      :headers {"Content-Security-Policy" ""
                "Cache-Control"           "no-store"
                "Content-Type"            (mime/default-mime-types "html")}

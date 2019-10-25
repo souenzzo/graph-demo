@@ -191,23 +191,23 @@
 
 (defn ^:export main
   []
-  (let [{:keys [targetId initialDb remoteUrl appKey]} #?(:cljsrn  {:appKey    "graphdemo"
-                                                                   :remoteUrl "http://10.0.2.2:8080/api"}
-                                                         :cljs    (->> (gobj/getValueByKeys js/document "body" "dataset")
-                                                                       (.entries js/Object)
-                                                                       (into {} (map (fn [[k v]]
-                                                                                       [(keyword k) v]))))
-                                                         :default {})
+  (let [{:keys [trace targetId initialDb
+                remoteUrl appKey]} #?(:cljsrn  {:appKey    "graphdemo"
+                                                :remoteUrl "http://10.0.2.2:8080/api"}
+                                      :cljs    (->> (gobj/getValueByKeys js/document "body" "dataset")
+                                                    (.entries js/Object)
+                                                    (into {} (map (fn [[k v]]
+                                                                    [(keyword k) v]))))
+                                      :default {})
         initial-db #?(:cljs (some->> initialDb
                                      (transit/read (transit/reader :json)))
                       :default nil)
         initial-db? (map? initial-db)
         service (cond-> #?(:cljs    {:shared  {:history (new Html5History)}
-                                     :remotes {:remote  (-> {:url                remoteUrl
-                                                             :request-middleware (-> (fhr/wrap-fulcro-request)
-                                                                                     (trace-remote))}
-                                                            (fhr/fulcro-http-remote))
-                                               :default {}}}
+                                     :remotes {:remote (-> {:url                remoteUrl
+                                                            :request-middleware (cond-> (fhr/wrap-fulcro-request)
+                                                                                        (not (string/blank? trace)) (trace-remote))}
+                                                           (fhr/fulcro-http-remote))}}
                            :default {})
                         appKey (assoc :render-root! (fn [ui set-root]
                                                       (set-root ui)))

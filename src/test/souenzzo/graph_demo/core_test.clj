@@ -25,7 +25,7 @@
   [app eql]
   (let [{::http/keys [service-fn]} app
         {:keys [body]} (response-for service-fn :post "/api"
-                                     :body (gd/pr-transit-str eql))]
+                                     :body (gd/pr-transit-str :json eql))]
     (transit/read (transit/reader (io/input-stream (.getBytes body))
                                   :json))))
 
