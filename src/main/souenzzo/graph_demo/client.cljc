@@ -8,9 +8,9 @@
                        [com.fulcrologic.fulcro.dom :as dom]]
                 :clj  [[com.fulcrologic.fulcro.dom-server :as dom]])
             #?@(:cljsrn [["react-native" :as rn]])
-            [com.fulcrologic.fulcro.components :as fc]
+            [com.fulcrologic.fulcro.components :as comp :refer [defsc]]
             [edn-query-language.core :as eql]
-            [com.fulcrologic.fulcro.routing.legacy-ui-routers :as fr]
+            [com.fulcrologic.fulcro.routing.dynamic-routing :as dr]
             [com.fulcrologic.fulcro.application :as fa]
             [com.fulcrologic.fulcro.data-fetch :as df]
             [com.fulcrologic.fulcro.mutations :as fm]
@@ -20,11 +20,14 @@
 
 
 (defn button
-  [app {:keys [on-press title href]}]
+  [{:keys [on-press title href color]}]
   #?(:cljsrn  (r/createElement rn/Button #js {:onPress on-press
                                               :title   title})
      :default (if href
-                (dom/a {:href href} title)
+                (dom/a {:style {:padding         "1rem"
+                                :borderStyle     "solid"
+                                :backgroundColor color}
+                        :href  href} title)
                 (dom/button {:onClick on-press}
                             title))))
 
@@ -34,9 +37,12 @@
      :default (string/join txts)))
 
 (defn view
-  [{:keys [background-color]} & child]
+  [{:keys [flexDirection]} & child]
   #?(:cljsrn  (apply r/createElement rn/View #js {} child)
-     :default (apply dom/div {:style {:backgroundColor background-color}} child)))
+     :default (apply dom/div
+                     {:style (cond-> {:display "flex"}
+                                     flexDirection (assoc :flexDirection flexDirection))}
+                     child)))
 
 
 (defn input
@@ -46,43 +52,45 @@
      :default (dom/input {:value    value
                           :onChange #(-> % .-target .-value on-change-text)})))
 
-(fc/defsc Friend'sFriend [this {:user/keys [id]}]
-  {:query [:user/id]
+(defsc Friend'sFriend [this {:user/keys [id color]}]
+  {:query [:user/id
+           :user/color]
    :ident :user/id}
-  (button this {:href  (str "/app/user/" id)
-                :title (str id ">")}))
+  (button {:href  (str "#/user/" id)
+           :color color
+           :title id}))
 
-(def ui-friend's-friend (fc/factory Friend'sFriend {:keyfn :user/id}))
+(def ui-friend's-friend (comp/factory Friend'sFriend {:keyfn :user/id}))
 
-(fc/defsc Friend [this {:user/keys [id friends color]}]
+(defsc Friend [this {:user/keys [id friends color]}]
   {:query [:user/id
            :user/color
-           {:user/friends (fc/get-query Friend'sFriend)}]
+           {:user/friends (comp/get-query Friend'sFriend)}]
    :ident :user/id}
-  (view
-    {:background-color color}
-    (text id)
-    (map ui-friend's-friend friends)))
-
-(def ui-friend (fc/factory Friend {:keyfn :user/id}))
-
-(fc/defsc User [this {:user/keys [id friends color]}]
-  {:query [:user/id
-           :user/color
-           {:user/friends (fc/get-query Friend)}]
-   :ident :user/id}
-  (view
-    {}
+  (comp/fragment
+    (button {:href  (str "#/user/" id)
+             :color color
+             :title id})
     (view
       {}
-      (text "current user: '" id "'"))
+      (map ui-friend's-friend friends))))
+
+(def ui-friend (comp/factory Friend {:keyfn :user/id}))
+
+(defsc User [this {:user/keys [id friends color]}]
+  {:query [:user/id
+           :user/color
+           {:user/friends (comp/get-query Friend)}]
+   :ident :user/id}
+  (comp/fragment
+    (text "current user: '" id "'")
     (text "Color: ")
     (input {:value          (or color "#ffffff")
-            :on-change-text #(fc/transact! this `[(user/set-color ~{:user/id    id
-                                                                    :user/color %})])})
+            :on-change-text #(comp/transact! this `[(user/set-color ~{:user/id    id
+                                                                      :user/color %})])})
     (text "'" id "'" " friend list:")
     (view
-      {}
+      {:flexDirection "column"}
       (map ui-friend friends))))
 
 
@@ -94,7 +102,7 @@
                                  (contains? (:user/id st) id) (assoc-in [:PAGE/users :PAGE/users :current] [:user/id id])))))
   (remote [env]
           (assoc env
-            :ast (eql/query->ast [{[:user/id id] (fc/get-query User)}]))))
+            :ast (eql/query->ast [{[:user/id id] (comp/get-query User)}]))))
 
 
 (fm/defmutation user/set-color
@@ -105,66 +113,62 @@
   (remote [_]
           true))
 
-(def ui-user (fc/factory User {:keyfn :user/id}))
-
-(fc/defsc Users [this {:PAGE/keys [ident id]
-                       :keys      [current]
-                       :ui/keys   [current-id new-friend]}]
-  {:query         [:PAGE/ident
-                   :PAGE/id
-                   :ui/new-friend
-                   :ui/current-id
-                   {:current (fc/get-query User)}]
-   :ident         (fn []
-                    [ident id])
-   :initial-state (fn [_]
-                    {:PAGE/ident    :PAGE/users
-                     :ui/current-id "foo"
-                     :ui/new-friend "bar"
-                     :PAGE/id       :PAGE/users})}
-  (view
-    {}
-    (input {:value          current-id
-            :on-change-text #(fm/set-value! this :ui/current-id %)})
-    (button this {:href  (str "/app/user/" current-id)
-                  :title ">"})
-    (text "add a friend: ")
-    (input {:value          new-friend
-            :on-change-text #(fm/set-value! this :ui/new-friend %)})
-    (button this
-            {:on-press #(fc/transact! this `[(user/add-friend ~{:user/id         current-id
-                                                                :user/new-friend new-friend})])
-             :title    "+"})
-    (ui-user current)))
+(def ui-user (comp/factory User {:keyfn :user/id}))
 
 (fm/defmutation user/add-friend
-  [_]
+  [{:user/keys [id]}]
   (action [{:keys [state]}]
           (swap! state (fn [st]
                          (-> st))))
   (remote [env]
           (-> env
-              (fm/returning User)
-              (fm/with-target [:PAGE/users :PAGE/users :ui/current]))))
+              (fm/returning User))))
 
 
 
-(fr/defsc-router RootRouter [this {:PAGE/keys [ident id]}]
-  {:default-route  Users
-   :ident          (fn [] [ident id])
-   :router-targets {:PAGE/users Users}
-   :router-id      :PAGE/root-router}
-  (text "404"))
+(defsc Home [this {:user/keys [id]
+                   :ui/keys   [new-friend current-id]
+                   :>/keys    [current]
+                   :or        {new-friend ""}}]
+  {:query         [:user/id
+                   :ui/new-friend
+                   :ui/current-id
+                   {:>/current (comp/get-query User)}]
+   :ident         (fn []
+                    [:user/id id])
+   :route-segment ["user" :user/id]
+   :will-enter    (fn [app {:user/keys [id]}]
+                    (dr/route-deferred [:user/id id]
+                                       #(df/load! app [:user/id id] Home
+                                                  {:post-mutation        `dr/target-ready
+                                                   :post-mutation-params {:target [:user/id id]}})))}
+  (comp/fragment
+    (view {}
+          (input {:value          (or current-id id "")
+                  :on-change-text #(fm/set-value! this :ui/current-id %)})
+          (button {:href  (str "#/user/" current-id)
+                   :title ">"})
+          (text "add a friend: ")
+          (input {:value          new-friend
+                  :on-change-text #(fm/set-value! this :ui/new-friend %)})
+          (button {:on-press #(comp/transact! this `[(user/add-friend ~{:user/id         id
+                                                                        :user/new-friend new-friend})])
+                   :title    "+"}))
+    (ui-user current)))
 
-(def ui-root-router (fc/factory RootRouter))
+(dr/defrouter RootRouter [_this _props]
+  {:router-targets [Home]})
 
-(fc/defsc Root [this {:>/keys [root-router]}]
-  {:query         [{:>/root-router (fc/get-query RootRouter)}]
+(def ui-root-router (comp/factory RootRouter {}))
+
+(defsc Root [this {:>/keys [root-router]}]
+  {:query         [{:>/root-router (comp/get-query RootRouter)}]
    :initial-state (fn [_]
-                    {:>/root-router (fc/get-initial-state RootRouter _)})}
+                    {:>/root-router (comp/get-initial-state RootRouter _)})}
   (ui-root-router root-router))
 
-(def ui-root (fc/factory Root))
+
+(def ui-root (comp/factory Root))
 
 (defonce state (atom nil))
 
@@ -183,7 +187,7 @@
                  (when-not root
                    (fa/mount! app Root (fn [ui]
                                          (@ref-set-root ui))))
-                 (or root (fc/fragment)))))))
+                 (or root (comp/fragment)))))))
 
 (defn ^:export main
   []
@@ -212,21 +216,19 @@
                            #?(:cljs (let [history (:history (:shared service))]
                                       (doto history
                                         (gevt/listen event-type/NAVIGATE #(when-let [token (.-token %)]
-                                                                            (df/load! app :>/load Root
-                                                                                      {:params {:pathname token}
-                                                                                       :target []})))
-                                        (.setUseFragment false)
-                                        (.setPathPrefix "http://localhost:8080")
+                                                                            (dr/change-route app (-> (string/split token #"/")
+                                                                                                     rest
+                                                                                                     vec))))
                                         (.setEnabled true))
-                                      (js/addEventListener "click" (fn [e]
-                                                                     (when-let [pathname (-> e .-target .-pathname)]
-                                                                       (.preventDefault e)
-                                                                       (.setToken history pathname)))))))
+                                      #_(js/addEventListener "click" (fn [e]
+                                                                       (when-let [pathname (-> e .-target .-pathname)]
+                                                                         (.preventDefault e)
+                                                                         (.setToken history pathname)))))))
         app (fa/fulcro-app (assoc service :client-did-mount client-did-mount))]
     #?(:cljsrn (.registerComponent rn/AppRegistry appKey (constantly (app->react-component-target app)))
        :cljs   (fa/mount! app Root (gdom/getElement targetId)
-                          {:hydrate?          initial-db?
-                           :initialize-state? (not initial-db?)}))
+                          #_{:hydrate?          initial-db?
+                             :initialize-state? (not initial-db?)}))
     (reset! state app)))
 
 (defn after-load

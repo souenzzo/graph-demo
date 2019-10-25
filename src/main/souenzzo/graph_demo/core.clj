@@ -35,25 +35,25 @@
     (transit/write writer x)
     (str boas)))
 
-(fc/defsc Index [this {:>/keys [root]}]
-  {:query         [{:>/root (fc/get-query client/Root)}]
+(fc/defsc Index [this {:>/keys [#_root]}]
+  {:query         [#_{:>/root (fc/get-query client/Root)}]
    :initial-state (fn [_]
-                    {:>/root (fc/get-initial-state client/Root _)})}
+                    {#_#_:>/root (fc/get-initial-state client/Root _)})}
   (let [target-id "app"
         main-fn `client/main
         onload (str (cljs.comp/munge main-fn) "()")
-        initial-db (tree->db client/Root root true)]
+        #_#_initial-db (tree->db client/Root root true)]
     (dom/html
       (dom/head
         (dom/meta {:charset "utf-8"}))
       (dom/body
-        {:data-initial-db (pr-transit-str initial-db)
+        {#_#_:data-initial-db (pr-transit-str initial-db)
          :data-target-id  target-id
          :data-remote-url "/api"
          :onload          onload}
         (dom/div
           {:id target-id}
-          (client/ui-root root))
+          #_(client/ui-root root))
         (dom/script {:src "/js/main/main.js"})))))
 
 (def ui-index (fc/factory Index))
@@ -182,7 +182,7 @@
 
 (defn index
   [{::keys [parser] :as request}]
-  (let [initial-state (async/<!! (parser request (fc/get-query Index)))]
+  (let [initial-state {} #_(async/<!! (parser request (fc/get-query Index)))]
     {:body    (string/join "\n" ["<!DOCTYPE html>"
                                  (dom/render-to-str (ui-index initial-state))])
      :headers {"Content-Security-Policy" ""
