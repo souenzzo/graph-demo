@@ -18,80 +18,74 @@
             [cognitect.transit :as transit])
   #?(:cljs (:import (goog.history Html5History))))
 
+(defn ui-user-card
+  [{:keys [ident color]} & child]
+  (dom/div
+    {:style {:backgroundColor color}}
+    (dom/a {:style {:backgroundColor "white"
+                    :margin          "1rem"}
+            :href  (str "#/user/" ident)}
+           ident)
+    (when child
+      (apply dom/div
+             {:style {:backgroundColor "grey"
+                      :padding         ".2rem"
+                      :borderStyle     "solid"
+                      :display         "flex"}}
+             child))))
 
-(defn button
-  [{:keys [on-press title href color]}]
-  #?(:cljsrn  (r/createElement rn/Button #js {:onPress on-press
-                                              :title   title})
-     :default (if href
-                (dom/a {:style {:padding         "1rem"
-                                :borderStyle     "solid"
-                                :backgroundColor color}
-                        :href  href} title)
-                (dom/button {:onClick on-press}
-                            title))))
-
-(defn text
-  [& txts]
-  #?(:cljsrn  (r/createElement rn/Text #js {} (string/join txts))
-     :default (string/join txts)))
-
-(defn view
-  [{:keys [flexDirection]} & child]
-  #?(:cljsrn  (apply r/createElement rn/View #js {} child)
-     :default (apply dom/div
-                     {:style (cond-> {:display "flex"}
-                                     flexDirection (assoc :flexDirection flexDirection))}
-                     child)))
-
-
-(defn input
-  [{:keys [on-change-text value]}]
-  #?(:cljsrn  (r/createElement rn/TextInput #js {:onChangeText on-change-text
-                                                 :value        value})
-     :default (dom/input {:value    value
-                          :onChange #(-> % .-target .-value on-change-text)})))
-
-(defsc Friend'sFriend [this {:user/keys [id color]}]
+(defsc Friend'sFriend [this props]
   {:query [:user/id
            :user/color]
-   :ident :user/id}
-  (button {:href  (str "#/user/" id)
-           :color color
-           :title id}))
+   :ident :user/id})
 
-(def ui-friend's-friend (comp/factory Friend'sFriend {:keyfn :user/id}))
+(declare ui-friend)
 
 (defsc Friend [this {:user/keys [id friends color]}]
   {:query [:user/id
            :user/color
            {:user/friends (comp/get-query Friend'sFriend)}]
    :ident :user/id}
-  (comp/fragment
-    (button {:href  (str "#/user/" id)
-             :color color
-             :title id})
-    (view
-      {}
-      (map ui-friend's-friend friends))))
+  (ui-user-card
+    {:ident id
+     :color color}
+    (if friends
+      (dom/div
+        {:style {:display "flex"}}
+        (map ui-friend friends))
+      (dom/span "..."))))
 
 (def ui-friend (comp/factory Friend {:keyfn :user/id}))
 
-(defsc User [this {:user/keys [id friends color]}]
+(defsc User [this {:ui/keys   [new-friend]
+                   :user/keys [id color]
+                   :as        user}]
   {:query [:user/id
            :user/color
+           :ui/new-friend
            {:user/friends (comp/get-query Friend)}]
    :ident :user/id}
   (comp/fragment
-    (text "current user: '" id "'")
-    (text "Color: ")
-    (input {:value          (or color "#ffffff")
-            :on-change-text #(comp/transact! this `[(user/set-color ~{:user/id    id
-                                                                      :user/color %})])})
-    (text "'" id "'" " friend list:")
-    (view
-      {:flexDirection "column"}
-      (map ui-friend friends))))
+    (dom/form
+      {:onSubmit (fn [e]
+                   (.preventDefault e)
+                   (comp/transact! this `[(user/add-friend ~{:user/id         id
+                                                             :user/new-friend new-friend})]))}
+      (dom/input {:value    new-friend
+                  :onChange #(fm/set-value! this :ui/new-friend (-> % .-target .-value))})
+      (dom/input {:value "+"
+                  :type  "submit"}))
+    (dom/form
+      {:onSubmit (fn [e]
+                   (.preventDefaults e)
+                   (comp/transact! this `[(user/set-color ~{:user/id    id
+                                                            :user/color color})]))}
+      (dom/input {:value    (or color "#ffffff")
+                  :type     "color"
+                  :onBlur   (fn [e]
+                              (.submit (.-form (.-target e))))
+                  :onChange #(fm/set-value! this :user/color (-> % .-target .-value))}))
+    (ui-friend user)))
 
 
 (fm/defmutation user/focus
@@ -127,11 +121,9 @@
 
 
 (defsc Home [this {:user/keys [id]
-                   :ui/keys   [new-friend current-id]
-                   :>/keys    [current]
-                   :or        {new-friend ""}}]
+                   :ui/keys   [current-id]
+                   :>/keys    [current]}]
   {:query         [:user/id
-                   :ui/new-friend
                    :ui/current-id
                    {:>/current (comp/get-query User)}]
    :ident         (fn []
@@ -143,17 +135,12 @@
                                                   {:post-mutation        `dr/target-ready
                                                    :post-mutation-params {:target [:user/id id]}})))}
   (comp/fragment
-    (view {}
-          (input {:value          (or current-id id "")
-                  :on-change-text #(fm/set-value! this :ui/current-id %)})
-          (button {:href  (str "#/user/" current-id)
-                   :title ">"})
-          (text "add a friend: ")
-          (input {:value          new-friend
-                  :on-change-text #(fm/set-value! this :ui/new-friend %)})
-          (button {:on-press #(comp/transact! this `[(user/add-friend ~{:user/id         id
-                                                                        :user/new-friend new-friend})])
-                   :title    "+"}))
+    (dom/div
+      {:style {:display "flex"}}
+      (dom/input {:value    (or current-id id "")
+                  :onChange #(fm/set-value! this :ui/current-id (-> % .-target .-value))})
+      (dom/a {:href (str "#/user/" current-id)}
+             ">"))
     (ui-user current)))
 
 (dr/defrouter RootRouter [_this _props]
